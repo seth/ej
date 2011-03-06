@@ -1,0 +1,6 @@
+Richard O'Keefe
+http://groups.google.com/group/erlang-programming/browse_thread/thread/7af6f99e740df979/97c50c0df25502cd?lnk=gst&q=Javascript+parse+transform#97c50c0df25502cd
+http://erlang.2086793.n4.nabble.com/Access-JSON-in-Erlang-like-you-do-in-JavaScript-td3002901.html#a3005050
+
+stickyNotes.zip src/struct.erl
+http://beebole.com/en/blog/erlang/tutorial-web-application-erlang/
