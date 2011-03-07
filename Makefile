@@ -1,7 +1,7 @@
 ERL ?= erl
 APP := cheferl
 
-.PHONY: deps test
+.PHONY: deps test doc
 
 all: deps
 	@./rebar compile
@@ -18,5 +18,5 @@ clean:
 distclean: clean
 	@./rebar delete-deps
 
-docs:
-	@erl -noshell -run edoc_run application '$(APP)' '"."' '[]'
+doc:
+	@./rebar doc

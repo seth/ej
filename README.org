@@ -1,6 +1,13 @@
-Richard O'Keefe
-http://groups.google.com/group/erlang-programming/browse_thread/thread/7af6f99e740df979/97c50c0df25502cd?lnk=gst&q=Javascript+parse+transform#97c50c0df25502cd
-http://erlang.2086793.n4.nabble.com/Access-JSON-in-Erlang-like-you-do-in-JavaScript-td3002901.html#a3005050
+* ej helps you work with Erlang terms representing JSON
 
-stickyNotes.zip src/struct.erl
-http://beebole.com/en/blog/erlang/tutorial-web-application-erlang/
+The ej module is intended to make it easier to work with the Erlang
+structure returned by =mochijson2:decode/1= to represent JSON as
+Erlang terms.  You can use =ej:get= to walk an object and return a
+particular value, or =ej:set= to update a value within an object.
+
+The idea for this helper module was inspired by [[http://groups.google.com/group/erlang-programming/browse_thread/thread/7af6f99e740df979/97c50c0df25502cd?lnk=gst&q=Javascript+parse+transform#97c50c0df25502cd][this thread on the
+Erlang Questions]] mailing list and, in particular, by the reply from
+Richard O'Keefe.  Additional motivation from the very similar helper
+module =struct= included in the [[http://beebole.com/en/blog/erlang/tutorial-web-application-erlang/][sticky notes example application]] from
+the folks at BeeBole.
+
