@@ -28,12 +28,13 @@
 -author('Seth Falcon <seth@userprimary.net').
 -export([
          get/2,
-         set/3
+         set/3,
+         my_set/3
          ]).
 
--ifdef(TEST).
+%-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--endif.
+%-endif.
 
 %% @doc Extract a value from `Obj'
 %%
@@ -56,17 +57,14 @@ get0([], Value) ->
     Value.
 
 
-get_value(Key, Obj) when is_binary(Key) ->
-    case Obj of
-        {struct, L} ->
-            get_value(Key, L);
-        PL=[{_, _}|_T] ->
-            proplists:get_value(Key, PL);
-        [_H|_T] ->
-            undefined
-    end;
 get_value(Key, Obj) when is_list(Key) ->
     get_value(iolist_to_binary(Key), Obj);
+get_value(Key, {struct, L}) when is_binary(Key) ->
+    get_value(Key,L);
+get_value(Key, PL=[{_, _}|_T]) when is_binary(Key) ->
+    proplists:get_value(Key, PL);    
+get_value(Key,  [_H|_T]) when is_binary(Key) ->
+    undefined;
 get_value(first, [H|_T]) ->
     H;
 get_value(last, List=[_H|_T]) ->
@@ -75,6 +73,24 @@ get_value(Index, List=[_H|_T]) when is_integer(Index) ->
     lists:nth(Index, List);
 get_value(Index, Obj) ->
     erlang:error({index_for_non_list, {Index, Obj}}).
+
+transmute(Key) when is_binary(Key) ->
+    Key;
+transmute(Key) when is_list(Key) ->
+    iolist_to_binary(Key).
+
+my_set(Keys, Obj, Value) when is_tuple(Keys) ->
+    my_set0([transmute(X) || X <-tuple_to_list(Keys)], Obj, Value, []).
+
+my_set0(_KeySet = [_Key | []], _Obj={struct, _P}, _Value, _Upstream) ->
+    lists:keystore(_Key, 1, _P, {_Key, _Value});
+my_set0(_KeySet = [Key | Rest], Obj={struct, _P}, Value, _Upstream) ->
+    case get_value(Key, Obj) of
+        undefined ->
+            erlang:error({no_path, Key});
+        Downstream ->
+            {struct, lists:keystore(Key, 1, _P, {Key, my_set0(Rest, Downstream, Value, [Obj|_Upstream])})}
+    end.
 
 %% @doc Set a value in `Obj'
 %%
@@ -159,7 +175,32 @@ ej_test_() ->
 
             ?_assertException(error, {index_for_non_list, _},
                               ej:get({"glossary", "title", 1}, Glossary))]},
-
+          {"ej:my_set, replacing existing value",
+           fun() ->
+                   Path1 = {"widget", "window", "name"},
+                   NewValue1 = <<"bob">>,
+                   CurrentValue1 = ej:get(Path1, Widget),
+                   ?assertNot(NewValue1 =:= CurrentValue1),
+                   Widget1 = ej:my_set(Path1, Widget, NewValue1),
+                   ShouldBeNewValue1 = ej:get(Path1, Widget1),
+                   ?assertEqual(NewValue1, ShouldBeNewValue1)
+           end},
+          {"ej:my_set, creating new value",
+           fun() ->
+                   Path1 = {"widget", "image", "nOffset"},
+                   Value1 = <<"YYY">>,
+                   ?assertEqual(ej:get(Path1, Widget), undefined),
+                   Widget1 = ej:my_set(Path1, Widget, Value1),
+                   ?assertEqual(ej:get(Path1, Widget1), Value1)
+           end},
+          {"ej:my_set, missing intermediate path",
+           fun() ->
+                   Path1 = {"widget", "poop", "nOffset"},
+                   Value1 = <<"YYY">>,
+                   ?assertEqual(ej:get(Path1, Widget), undefined),
+                   ?assertException(error, {no_path, _},ej:my_set(Path1, Widget, Value1))
+           end
+          },
           {"ej:set top-level",
            fun() ->
                    NewVal = <<"2">>,
