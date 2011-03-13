@@ -80,16 +80,16 @@ transmute(Key) when is_list(Key) ->
     iolist_to_binary(Key).
 
 my_set(Keys, Obj, Value) when is_tuple(Keys) ->
-    my_set0([transmute(X) || X <-tuple_to_list(Keys)], Obj, Value, []).
+    my_set0([transmute(X) || X <-tuple_to_list(Keys)], Obj, Value).
 
-my_set0(_KeySet = [_Key | []], _Obj={struct, _P}, _Value, _Upstream) ->
+my_set0(_KeySet = [_Key | []], _Obj={struct, _P}, _Value) ->
     lists:keystore(_Key, 1, _P, {_Key, _Value});
-my_set0(_KeySet = [Key | Rest], Obj={struct, _P}, Value, _Upstream) ->
+my_set0(_KeySet = [Key | Rest], Obj={struct, _P}, Value) ->
     case get_value(Key, Obj) of
         undefined ->
             erlang:error({no_path, Key});
         Downstream ->
-            {struct, lists:keystore(Key, 1, _P, {Key, my_set0(Rest, Downstream, Value, [Obj|_Upstream])})}
+            {struct, lists:keystore(Key, 1, _P, {Key, my_set0(Rest, Downstream, Value)})}
     end.
 
 %% @doc Set a value in `Obj'
