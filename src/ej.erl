@@ -29,12 +29,12 @@
 -export([
          get/2,
          set/3,
-         my_set/3
+         delete/2
          ]).
 
-%-ifdef(TEST).
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
-%-endif.
+-endif.
 
 %% @doc Extract a value from `Obj'
 %%
@@ -60,10 +60,10 @@ get0([], Value) ->
 get_value(Key, Obj) when is_list(Key) ->
     get_value(iolist_to_binary(Key), Obj);
 get_value(Key, {struct, L}) when is_binary(Key) ->
-    get_value(Key,L);
+    get_value(Key, L);
 get_value(Key, PL=[{_, _}|_T]) when is_binary(Key) ->
     proplists:get_value(Key, PL);    
-get_value(Key,  [_H|_T]) when is_binary(Key) ->
+get_value(Key, [_H|_T]) when is_binary(Key) ->
     undefined;
 get_value(first, [H|_T]) ->
     H;
@@ -74,60 +74,38 @@ get_value(Index, List=[_H|_T]) when is_integer(Index) ->
 get_value(Index, Obj) ->
     erlang:error({index_for_non_list, {Index, Obj}}).
 
-transmute(Key) when is_binary(Key) ->
+as_binary(Key) when is_binary(Key) ->
     Key;
-transmute(Key) when is_list(Key) ->
+as_binary(Key) when is_list(Key) ->
     iolist_to_binary(Key).
-
-my_set(Keys, Obj, Value) when is_tuple(Keys) ->
-    my_set0([transmute(X) || X <-tuple_to_list(Keys)], Obj, Value).
-
-my_set0(_KeySet = [_Key | []], _Obj={struct, _P}, _Value) ->
-    lists:keystore(_Key, 1, _P, {_Key, _Value});
-my_set0(_KeySet = [Key | Rest], Obj={struct, _P}, Value) ->
-    case get_value(Key, Obj) of
-        undefined ->
-            erlang:error({no_path, Key});
-        Downstream ->
-            {struct, lists:keystore(Key, 1, _P, {Key, my_set0(Rest, Downstream, Value)})}
-    end.
 
 %% @doc Set a value in `Obj'
 %%
 %% Replaces the value at the path specified by `Keys' with `Value' and
-%% returns the new structure.
+%% returns the new structure.  If `Value' is the atom `EJ_DELETE',
+%% then the path specified by `Keys' is removed (but see `delete/2').
+%% 
 set(Keys, Obj, Value) when is_tuple(Keys) ->
-   set0(lists:reverse(tuple_to_list(Keys)), Obj, Value).
+    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value).
 
-% to set a value, we get the value of the path one-level up, and then
-% set.  So we want to set values popping off the end of the path list.
-% Is there a better way to do this than calling reverse on Rest for
-% each key in path?
-set0([Key | Rest], Obj, Value) ->
-    TheObj = get0(lists:reverse(Rest), Obj),
-    set0(Rest, Obj, set_value(Key, TheObj, Value));
-set0([], _Obj, Value) ->
-    Value.
+set0([], _, Value) ->
+    Value;
+set0([Key | Rest], {struct, P}, Value) ->
+    case {get_value(Key, P), length(Rest), Value} of
+        {undefined, Len, _} when Len > 0 ->
+            erlang:error({no_path, Key});
+        {_, Len, 'EJ_DELETE'} when Len == 0 ->
+            {struct, lists:keydelete(Key, 1, P)};
+        {Downstream, _, _} ->
+            {struct, lists:keystore(Key, 1, P,
+                                    {Key, set0(Rest, Downstream, Value)})}
+    end.
+% TODO: support setting list elements as well as a means to add new
+% elements to a list.
 
-
-set_value(Key, Obj, Value) when is_binary(Key) ->
-    case Obj of
-        {struct, L} ->
-            set_value(Key, L, Value);
-        PL=[{_, _}|_T] ->
-            {struct, lists:keyreplace(Key, 1, PL, {Key, Value})};
-        [] ->
-            undefined;
-        _Else ->
-            Obj
-    end;
-set_value(Key, Obj, Value) when is_list(Key) ->
-    set_value(iolist_to_binary(Key), Obj, Value);
-set_value(first, List=[_H|_T], Value) ->
-    [Value | List];
-set_value(last, List=[_H|_T], Value) ->
-    List ++ [Value].
-
+%% @doc Remove the item specified by `Keys'.
+delete(Keys, Obj) when is_tuple(Keys) ->
+    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, 'EJ_DELETE').
 
 -ifdef(TEST).
 
@@ -175,40 +153,46 @@ ej_test_() ->
 
             ?_assertException(error, {index_for_non_list, _},
                               ej:get({"glossary", "title", 1}, Glossary))]},
-          {"ej:my_set, replacing existing value",
+
+          {"ej:set, replacing existing value",
            fun() ->
-                   Path1 = {"widget", "window", "name"},
-                   NewValue1 = <<"bob">>,
-                   CurrentValue1 = ej:get(Path1, Widget),
-                   ?assertNot(NewValue1 =:= CurrentValue1),
-                   Widget1 = ej:my_set(Path1, Widget, NewValue1),
-                   ShouldBeNewValue1 = ej:get(Path1, Widget1),
-                   ?assertEqual(NewValue1, ShouldBeNewValue1)
+                   Path = {"widget", "window", "name"},
+                   CurrentValue = ej:get(Path, Widget),
+                   NewValue = <<"bob">>,
+                   ?assert(NewValue /= CurrentValue),
+                   Widget1 = ej:set(Path, Widget, NewValue),
+                   ?assertEqual(NewValue, ej:get(Path, Widget1)),
+                   % make sure the structure hasn't been disturbed
+                   Widget2 = ej:set(Path, Widget1, <<"main_window">>),
+                   ?assertEqual(Widget, Widget2)
            end},
-          {"ej:my_set, creating new value",
+
+          {"ej:set, creating new value",
            fun() ->
-                   Path1 = {"widget", "image", "nOffset"},
-                   Value1 = <<"YYY">>,
-                   ?assertEqual(ej:get(Path1, Widget), undefined),
-                   Widget1 = ej:my_set(Path1, Widget, Value1),
-                   ?assertEqual(ej:get(Path1, Widget1), Value1)
+                   Path = {"widget", "image", "newOffset"},
+                   Value = <<"YYY">>,
+                   ?assertEqual(undefined, ej:get(Path, Widget)),
+                   Widget1 = ej:set(Path, Widget, Value),
+                   ?assertEqual(Value, ej:get(Path, Widget1))
            end},
-          {"ej:my_set, missing intermediate path",
+
+          {"ej:set, missing intermediate path",
            fun() ->
-                   Path1 = {"widget", "poop", "nOffset"},
-                   Value1 = <<"YYY">>,
-                   ?assertEqual(ej:get(Path1, Widget), undefined),
-                   ?assertException(error, {no_path, _},ej:my_set(Path1, Widget, Value1))
-           end
-          },
+                   Path = {"widget", "middle", "nOffset"},
+                   Value = <<"YYY">>,
+                   ?assertEqual(undefined, ej:get(Path, Widget)),
+                   ?assertException(error, {no_path, _},
+                                    ej:set(Path, Widget, Value))
+           end},
+
           {"ej:set top-level",
            fun() ->
+                   OrigVal = ej:get({"widget", "version"}, Widget),
                    NewVal = <<"2">>,
-                   OrigCheck = ej:get({"widget", "image", "name"}, Widget),
-                   Widget1 = ej:set({"widget", "version"}, Widget, NewVal),
-                   ?assertEqual(NewVal, ej:get({"widget", "version"}, Widget1)),
-                   ?assertEqual(OrigCheck,
-                                ej:get({"widget", "image", "name"}, Widget1))
+                   NewWidget = ej:set({"widget", "version"}, Widget, NewVal),
+                   ?assertEqual(NewVal, ej:get({"widget", "version"}, NewWidget)),
+                   Reset = ej:set({"widget", "version"}, NewWidget, OrigVal),
+                   ?assertEqual(Widget, Reset)
            end},
 
           {"ej:set nested",
@@ -222,7 +206,24 @@ ej_test_() ->
                    ?assertEqual(NewVal, ej:get(Path, Glossary1)),
                    ?assertEqual(Unchanged, ej:get({"glossary", "GlossDiv",
                                                    "GlossList", "GlossEntry",
-                                                   "SortAs"}, Glossary1))
+                                                   "SortAs"}, Glossary1)),
+                   Reset = ej:set(Path, Glossary1, <<"SGML">>),
+                   ?assertEqual(Glossary, Reset)
+           end},
+
+          {"ej:remove",
+           fun() ->
+                   Path = {"glossary", "GlossDiv", "GlossList", "GlossEntry", "Abbrev"},
+                   Orig = ej:get(Path, Glossary),
+                   ?assert(undefined /= Orig),
+                   Glossary1 = ej:delete(Path, Glossary),
+                   ?assertEqual(undefined, ej:get(Path, Glossary1)),
+                   % verify some structure
+                   ?assertEqual(<<"SGML">>, ej:get({"glossary", "GlossDiv",
+                                                    "GlossList", "GlossEntry",
+                                                    "Acronym"}, Glossary1)),
+                   ?assertEqual(<<"S">>, ej:get({"glossary", "GlossDiv",
+                                                 "title"}, Glossary1))
            end}
          ]
  end
