@@ -1,13 +1,69 @@
 * ej helps you work with Erlang terms representing JSON
 
-The ej module is intended to make it easier to work with the Erlang
-structure returned by =mochijson2:decode/1= to represent JSON as
-Erlang terms.  You can use =ej:get= to walk an object and return a
-particular value, or =ej:set= to update a value within an object.
+The ej module is intended to make it easier to work with Erlang terms
+representing [[http://json.org][JSON]] as returned by [[https://github.com/mochi/mochiweb][mochijson2]].  You can use =ej:get/2=
+to walk an object and return a particular value, =ej:set/3= to update
+a value within an object, or =ej:delete/2= to remove a value an
+object.
+
+ej is best explained by example.  Consider the following JSON data
+(borrowed from http://www.json.org/example.html):
+
+#+BEGIN_SRC js
+  {"menu": {
+    "id": "file",
+    "value": "File",
+    "popup": {
+      "menuitem": [
+        {"value": "New", "onclick": "CreateNewDoc()"},
+        {"value": "Open", "onclick": "OpenDoc()"},
+        {"value": "Close", "onclick": "CloseDoc()"}
+      ]
+    }
+  }}
+#+END_SRC
+
+=mochijson2:decode/1= translates the JSON into Erlang terms like this:
+
+#+BEGIN_SRC erlang
+  {struct,
+   [{<<"menu">>,
+     {struct,
+      [{<<"id">>,<<"file">>},
+       {<<"value">>,<<"File">>},
+       {<<"popup">>,
+        {struct,
+         [{<<"menuitem">>,
+           [{struct,[{<<"value">>,<<"New">>},
+                     {<<"onclick">>,<<"CreateNewDoc()">>}]},
+            {struct,[{<<"value">>,<<"Open">>},
+                     {<<"onclick">>,<<"OpenDoc()">>}]},
+            {struct,[{<<"value">>,<<"Close">>},
+                     {<<"onclick">>,<<"CloseDoc()">>}]}]}]}}]}}]}
+#+END_SRC
+
+And here's ej in action:
+
+#+BEGIN_SRC txt
+% specify the path you want to access as a tuple of keys
+4> ej:get({"menu", "value"}, Obj).
+<<"File">>
+
+% you can access list elements by index
+11> ej:get({"menu", "popup", "menuitem", 2, "onclick"}, Obj).
+<<"OpenDoc()">>
+
+% The atoms 'first' and 'last' can be used for lists as well
+12> ej:get({"menu", "popup", "menuitem", first, "value"}, Obj).  
+<<"New">>
+
+% you can set a value
+Obj2 = ej:set({"menu", "id"}, Obj, <<"abc123">>)
+
+#+END_SRC
 
 The idea for this helper module was inspired by [[http://groups.google.com/group/erlang-programming/browse_thread/thread/7af6f99e740df979/97c50c0df25502cd?lnk=gst&q=Javascript+parse+transform#97c50c0df25502cd][this thread on the
 Erlang Questions]] mailing list and, in particular, by the reply from
 Richard O'Keefe.  Additional motivation from the very similar helper
 module =struct= included in the [[http://beebole.com/en/blog/erlang/tutorial-web-application-erlang/][sticky notes example application]] from
 the folks at BeeBole.
-
