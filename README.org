@@ -50,15 +50,22 @@ And here's ej in action:
 <<"File">>
 
 % you can access list elements by index
-11> ej:get({"menu", "popup", "menuitem", 2, "onclick"}, Obj).
+> ej:get({"menu", "popup", "menuitem", 2, "onclick"}, Obj).
 <<"OpenDoc()">>
 
 % The atoms 'first' and 'last' can be used for lists as well
-12> ej:get({"menu", "popup", "menuitem", first, "value"}, Obj).  
+> ej:get({"menu", "popup", "menuitem", first, "value"}, Obj).  
 <<"New">>
 
-% you can set a value
-Obj2 = ej:set({"menu", "id"}, Obj, <<"abc123">>)
+% set a value
+Obj2 = ej:set({"menu", "id"}, Obj, <<"abc123">>).
+
+% add a value
+Obj3 = ej:set({"menu", "new_key"}, Obj, <<"something">>).
+
+% add a value to a list
+NewItem = {struct,[{<<"value">>,<<"Save">>}, {<<"onclick">>,<<"SaveDoc()">>}]}.
+Obj4 = ej:set({"menu", "popup", "menuitem", new}, Obj, NewItem).
 
 #+END_SRC
 

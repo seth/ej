@@ -77,7 +77,9 @@ get_value(Index, Obj) ->
 as_binary(Key) when is_binary(Key) ->
     Key;
 as_binary(Key) when is_list(Key) ->
-    iolist_to_binary(Key).
+    iolist_to_binary(Key);
+as_binary(Key) when is_integer(Key) orelse is_atom(Key) ->
+    Key.
 
 %% @doc Set a value in `Obj'
 %%
@@ -90,7 +92,8 @@ set(Keys, Obj, Value) when is_tuple(Keys) ->
 
 set0([], _, Value) ->
     Value;
-set0([Key | Rest], {struct, P}, Value) ->
+set0([Key | Rest], {struct, P}, Value)
+  when is_binary(Key) orelse Key == 'EJ_DELETE' ->
     case {get_value(Key, P), length(Rest), Value} of
         {undefined, Len, _} when Len > 0 ->
             erlang:error({no_path, Key});
@@ -99,7 +102,38 @@ set0([Key | Rest], {struct, P}, Value) ->
         {Downstream, _, _} ->
             {struct, lists:keystore(Key, 1, P,
                                     {Key, set0(Rest, Downstream, Value)})}
-    end.
+    end;
+set0([new | []], P, Value) when is_list(P) ->
+    [Value|P];
+set0([Idx | Rest], P, Value)
+  when is_integer(Idx) orelse is_atom(Idx); is_list(P) ->
+    case {get_value(Idx, P), length(Rest), Value} of
+        {undefined, Len, _} when Len > 0 ->
+            erlang:error({no_path, Idx});
+        {_, Len, 'EJ_DELETE'} when Len == 0 ->
+            set_nth(Idx, P, 'EJ_DELETE');
+        {Downstream, _, _} ->
+            set_nth(Idx, P, set0(Rest, Downstream, Value))
+end.    
+
+set_nth(first, [_H|T], 'EJ_DELETE') ->
+    T;
+set_nth(first, [_H|T], V) ->
+    [V|T];
+set_nth(last, L, 'EJ_DELETE') ->
+    [_H|T] = lists:reverse(L),
+    lists:reverse(T);
+set_nth(last, L, V) ->
+    [_H|T] = lists:reverse(L),
+    lists:reverse([V|T]);
+set_nth(N, L, 'EJ_DELETE') ->
+    {L1, [_H|L2]} = lists:split(N - 1, L),
+    lists:concat([L1, L2]);
+set_nth(N, L, V) ->
+    {L1, [_H|L2]} = lists:split(N - 1, L),
+    lists:concat([L1, [V|L2]]).
+
+
 % TODO: support setting list elements as well as a means to add new
 % elements to a list.
 
@@ -114,12 +148,13 @@ ej_test_() ->
  fun() ->
          {ok, [Widget]} = file:consult("../test/widget.terms"),
          {ok, [Glossary]} = file:consult("../test/glossary.terms"),
+         {ok, [Menu]} = file:consult("../test/menu.terms"),
          ObjList = {struct, [{<<"objects">>,
                               [ {struct, [{<<"id">>, I}]} ||
                                   I <- lists:seq(1, 5) ]}]},
-         {Widget, Glossary, ObjList}
+         {Widget, Glossary, Menu, ObjList}
  end,
- fun({Widget, Glossary, ObjList}) ->
+ fun({Widget, Glossary, Menu, ObjList}) ->
          [{"ej:get",
            [
             ?_assertMatch({struct, [{_, _}|_]}, ej:get({"widget"}, Widget)),
@@ -209,6 +244,49 @@ ej_test_() ->
                                                    "SortAs"}, Glossary1)),
                    Reset = ej:set(Path, Glossary1, <<"SGML">>),
                    ?assertEqual(Glossary, Reset)
+           end},
+
+          {"ej:set list element",
+           fun() ->
+                   Orig = ej:get({"menu", "popup", "menuitem", 2}, Menu),
+                   New = ej:set({"onclick"}, Orig, <<"OpenFile()">>),
+                   Menu1 = ej:set({"menu", "popup", "menuitem", 2}, Menu, New),
+                   ?assertEqual(New,
+                                ej:get({"menu", "popup", "menuitem", 2}, Menu1)),
+                   Reset = ej:set({"menu", "popup", "menuitem", 2}, Menu1, Orig),
+                   ?assertEqual(Menu, Reset)
+           end},
+
+          {"ej:set list element path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", 2, "onclick"},
+                   Orig = ej:get(Path, Menu),
+                   New = <<"OpenFile()">>,
+                   Menu1 = ej:set(Path, Menu, New),
+                   ?assertEqual(New, ej:get(Path, Menu1)),
+                   Reset = ej:set(Path, Menu1, Orig),
+                   ?assertEqual(Menu, Reset)
+           end},
+
+          {"ej:set list element path first, last",
+           fun() ->
+                   FPath = {"menu", "popup", "menuitem", first, "value"},
+                   LPath = {"menu", "popup", "menuitem", last, "value"},
+                   FMenu = ej:set(FPath, Menu, <<"create">>),
+                   LMenu = ej:set(LPath, FMenu, <<"kill">>),
+                   ?assertEqual(<<"create">>, ej:get(FPath, FMenu)),
+                   ?assertEqual(<<"create">>, ej:get(FPath, LMenu)),
+                   ?assertEqual(<<"kill">>, ej:get(LPath, LMenu))
+           end},
+
+          {"ej:set new list element",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", new},
+                   Path1 = {"menu", "popup", "menuitem", first},
+                   Menu1 = ej:set(Path, Menu, <<"first-item">>),
+                   ?assertEqual(<<"first-item">>, ej:get(Path1, Menu1)),
+                   List = ej:get({"menu", "popup", "menuitem"}, Menu1),
+                   ?assertEqual(4, length(List))
            end},
 
           {"ej:remove",
