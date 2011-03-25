@@ -23,7 +23,6 @@
 %% `ej:set' to update a value.
 %%
 %% @end
-
 -module(ej).
 -author('Seth Falcon <seth@userprimary.net').
 -export([
@@ -36,6 +35,18 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-type(json_string() :: binary()).
+-type(json_null() :: null).
+-type(json_number() :: integer() | float()).
+-type(json_array() :: [json_term()]).
+-type(json_plist() :: [{json_string(), json_term()}]).
+-type(json_object() :: {struct, json_plist()}).
+-type(json_term() :: json_string() | json_number() | json_array() |
+      json_object() | json_null()).
+
+-type(key_type() :: binary() | integer() | first | last | new).
+-type(key_tuple() :: {key_type()}).
+
 %% @doc Extract a value from `Obj'
 %%
 %% `Keys' is a tuple specifying a path into the JSON structure.  Each
@@ -45,6 +56,8 @@
 %% atoms `` 'first' '' and `` 'last' '' can be used to access the
 %% first and last elements of a list, respectively.
 %%
+-spec(get(key_tuple(), json_object()) -> json_term()).
+
 get(Keys, Obj) when is_tuple(Keys) ->
    get0(tuple_to_list(Keys), Obj).
 
@@ -86,7 +99,8 @@ as_binary(Key) when is_integer(Key) orelse is_atom(Key) ->
 %% Replaces the value at the path specified by `Keys' with `Value' and
 %% returns the new structure.  If `Value' is the atom `EJ_DELETE',
 %% then the path specified by `Keys' is removed (but see `delete/2').
-%% 
+%%
+-spec(set(key_tuple(), json_object(), json_term()) -> json_term()).
 set(Keys, Obj, Value) when is_tuple(Keys) ->
     set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value).
 
@@ -138,6 +152,8 @@ set_nth(N, L, V) ->
 % elements to a list.
 
 %% @doc Remove the item specified by `Keys'.
+-spec(delete(key_tuple(), json_object()) -> json_object()).
+
 delete(Keys, Obj) when is_tuple(Keys) ->
     set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, 'EJ_DELETE').
 
