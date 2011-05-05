@@ -1,0 +1,12 @@
+** How to create test data
+#+BEGIN_SRC erlang
+make_terms(JsonFile) ->
+    {ok, Json} = file:read_file(JsonFile),
+    Base = filename:basename(JsonFile),
+    Decoder = mochijson2:decoder([{object_hook, fun({struct,L}) -> {L} end}]),
+    AltTerms = Decoder(Json),
+    Terms = mochijson2:decode(Json),
+    file:write_file(Base ++ ".terms", io_lib:format("~p.~n", [Terms])),
+    file:write_file(Base ++ ".alt_terms", io_lib:format("~p.~n", [AltTerms])).
+#+END_SRC
+
