@@ -231,7 +231,7 @@ ej_test_() ->
           {"ej:get with default",
            [
             ?_assertEqual(<<"1">>, ej:get({"widget", "version"}, Widget, "you'll never see this default")),
-            ?_assertEqual("defaults rock", ej:get({"widget", "NOT_PRESENT"}, Widget, "defaults rock"))
+            ?_assertEqual(<<"defaults rock">>, ej:get({"widget", "NOT_PRESENT"}, Widget, <<"defaults rock">>))
            ]},
 
           {"ej:set, replacing existing value",
