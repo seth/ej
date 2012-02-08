@@ -81,6 +81,8 @@ get_value(Key, PL=[{_, _}|_T]) when is_binary(Key) ->
     proplists:get_value(Key, PL);    
 get_value(Key, [_H|_T]) when is_binary(Key) ->
     undefined;
+get_value(Key, []) when is_binary(Key) ->
+    undefined;
 get_value(first, [H|_T]) ->
     H;
 get_value(last, List=[_H|_T]) ->
@@ -211,6 +213,13 @@ ej_test_() ->
             ?_assertEqual(undefined,
                           ej:get({"glossary", "GlossDiv", "GlossList",
                                   "GlossEntry", "fizzle"}, Glossary)),
+
+            ?_assertEqual(undefined,
+                          ej:get({"not_present"}, {[]})),
+
+            ?_assertEqual(undefined,
+                          ej:get({"not_present"}, {struct, []})),
+
 
             ?_assertException(error, {index_for_non_list, _},
                               ej:get({"glossary", "GlossDiv", "GlossList",
