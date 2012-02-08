@@ -27,6 +27,7 @@
 -author('Seth Falcon <seth@userprimary.net').
 -export([
          get/2,
+         get/3,
          set/3,
          delete/2
          ]).
@@ -50,6 +51,16 @@
 
 get(Keys, Obj) when is_tuple(Keys) ->
    get0(tuple_to_list(Keys), Obj).
+
+%% @doc same as get/2, but returns `Default' if the specified value was not found.
+-spec get(key_tuple(), json_object(), json_term()) -> json_term().
+get(Keys, Obj, Default) when is_tuple(Keys) ->
+    case get(Keys, Obj) of
+        undefined ->
+            Default;
+        Value ->
+            Value
+    end.
 
 get0([Key | Rest], Obj) ->
     case get_value(Key, Obj) of
@@ -207,6 +218,12 @@ ej_test_() ->
 
             ?_assertException(error, {index_for_non_list, _},
                               ej:get({"glossary", "title", 1}, Glossary))]},
+
+          {"ej:get with default",
+           [
+            ?_assertEqual(<<"1">>, ej:get({"widget", "version"}, Widget, "you'll never see this default")),
+            ?_assertEqual("defaults rock", ej:get({"widget", "NOT_PRESENT"}, Widget, "defaults rock"))
+           ]},
 
           {"ej:set, replacing existing value",
            fun() ->
