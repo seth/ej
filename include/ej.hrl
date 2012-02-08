@@ -28,7 +28,7 @@
 -type json_number() :: integer() | float().
 -type json_array()  :: [json_term()].
 -type json_plist()  :: [{json_string(), json_term()}].
--type json_object() :: {struct, json_plist()}.
+-type json_object() :: {struct, json_plist()} | {json_plist()}. % mochijson or ejson
 -type json_term()   :: json_string() | json_number() | json_array() |
                        json_object() | json_null().
 
