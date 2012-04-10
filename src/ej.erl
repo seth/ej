@@ -47,7 +47,7 @@
 %% atoms `` 'first' '' and `` 'last' '' can be used to access the
 %% first and last elements of a list, respectively.
 %%
--spec(get(key_tuple(), json_object()) -> json_term()).
+-spec(get(key_tuple(), json_object()) -> json_term() | undefined).
 
 get(Keys, Obj) when is_tuple(Keys) ->
    get0(tuple_to_list(Keys), Obj).
