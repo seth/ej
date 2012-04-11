@@ -3,9 +3,9 @@
 % Licensed under the Apache License, Version 2.0 (the "License");
 % you may not use this file except in compliance with the License.
 % You may obtain a copy of the License at
-% 
+%
 %     http://www.apache.org/licenses/LICENSE-2.0
-% 
+%
 % Unless required by applicable law or agreed to in writing, software
 % distributed under the License is distributed on an "AS IS" BASIS,
 % WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -37,6 +37,8 @@
 -endif.
 
 -include_lib("ej.hrl").
+
+-export_type([json_term/0, json_object/0]).
 
 %% @doc Extract a value from `Obj'
 %%
@@ -78,7 +80,7 @@ get_value(Key, {struct, L}) when is_binary(Key) ->
 get_value(Key, {L}) when is_binary(Key) -> % alt form
     get_value(Key, L);
 get_value(Key, PL=[{_, _}|_T]) when is_binary(Key) ->
-    proplists:get_value(Key, PL);    
+    proplists:get_value(Key, PL);
 get_value(Key, [_H|_T]) when is_binary(Key) ->
     undefined;
 get_value(Key, []) when is_binary(Key) ->
@@ -144,7 +146,7 @@ set0([Idx | Rest], P, Value)
             set_nth(Idx, P, 'EJ_DELETE');
         {Downstream, _, _} ->
             set_nth(Idx, P, set0(Rest, Downstream, Value))
-end.    
+end.
 
 set_nth(first, [_H|T], 'EJ_DELETE') ->
     T;
@@ -353,4 +355,3 @@ ej_test_() ->
 }.
 
 -endif.
-
