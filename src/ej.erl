@@ -38,7 +38,9 @@
 
 -include_lib("ej.hrl").
 
--export_type([json_term/0, json_object/0]).
+-export_type([json_object/0,
+              json_plist/0,
+              json_term/0]).
 
 %% @doc Extract a value from `Obj'
 %%
@@ -49,13 +51,13 @@
 %% atoms `` 'first' '' and `` 'last' '' can be used to access the
 %% first and last elements of a list, respectively.
 %%
--spec(get(key_tuple(), json_object()) -> json_term() | undefined).
+-spec(get(key_tuple(), json_object() | json_plist()) -> json_term() | undefined).
 
 get(Keys, Obj) when is_tuple(Keys) ->
    get0(tuple_to_list(Keys), Obj).
 
 %% @doc same as get/2, but returns `Default' if the specified value was not found.
--spec get(key_tuple(), json_object(), json_term()) -> json_term().
+-spec get(key_tuple(), json_object() | json_plist(), json_term()) -> json_term().
 get(Keys, Obj, Default) when is_tuple(Keys) ->
     case get(Keys, Obj) of
         undefined ->
@@ -234,6 +236,13 @@ ej_test_() ->
            [
             ?_assertEqual(<<"1">>, ej:get({"widget", "version"}, Widget, "you'll never see this default")),
             ?_assertEqual(<<"defaults rock">>, ej:get({"widget", "NOT_PRESENT"}, Widget, <<"defaults rock">>))
+           ]},
+
+          {"ej:get with json_plist",
+           [
+            ?_assertEqual(<<"1">>, ej:get({"a"}, [{<<"a">>, <<"1">>}])),
+            ?_assertEqual(undefined, ej:get({"x"}, [{<<"a">>, <<"1">>}])),
+            ?_assertEqual(undefined, ej:get({"x"}, []))
            ]},
 
           {"ej:set, replacing existing value",
