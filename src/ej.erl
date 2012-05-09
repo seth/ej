@@ -234,7 +234,12 @@ delete(Keys, Obj) when is_tuple(Keys) ->
 %% order, depth first).  NOTE: this function is experimental and the
 %% API and definition of specs is subject to change.
 valid({L}, Obj={OL}) when is_list(L) andalso is_list(OL) ->
-    valid(L, Obj, #spec_ctx{}).
+    valid(L, Obj, #spec_ctx{});
+valid({L}, Obj) when is_list(L) ->
+    #ej_invalid{type = json_type, key = undefined,
+                expected_type = object,
+                found_type = json_type(Obj),
+                found = Obj}.
 
 valid([{{Opt, Key}, ValSpec}|Rest], Obj, Ctx = #spec_ctx{path = Path} = Ctx)
   when is_binary(Key) andalso (Opt =:= opt orelse Opt =:= req) ->

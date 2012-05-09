@@ -38,6 +38,19 @@ basic_spec_0_test_() ->
                               basic_with(<<"fred">>,
                                         [{<<"description">>, {[]}}])))].
 
+non_hash_fails_with(Val, ActualType) ->
+    ?_assertEqual(#ej_invalid{type = json_type,
+                              expected_type = object,
+                              found_type = ActualType,
+                              found = Val}, ej:valid({[]}, Val)).
+
+non_hash_fails_test_() ->
+  non_hash_fails_with([], array),
+  non_hash_fails_with(<<"str">>, string),
+  non_hash_fails_with(10, number),
+  non_hash_fails_with(true, boolean),
+  non_hash_fails_with(null, null).
+
 array_map_test_() ->
     Spec = {[{<<"name">>, {string_match, regex_for(basic_name)}},
              {{opt, <<"description">>}, string},
@@ -132,6 +145,7 @@ any_value_test_() ->
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, <<"foo">>}]})),
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, 200}]})),
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, true}]})),
+     ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, null}]})),
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, [1,2,3]}]})),
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, [{"x",1}]}]}))
     ].
