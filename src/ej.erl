@@ -13,7 +13,7 @@
 % limitations under the License.
 %
 %% @author Seth Falcon <seth@userprimary.net>
-%% @copyright Copyright 2011 Seth Falcon
+%% @copyright Copyright 2011-2012 Seth Falcon
 %%
 %% @doc Tools for working with Erlang terms representing JSON.
 %%
@@ -29,7 +29,8 @@
          get/2,
          get/3,
          set/3,
-         delete/2
+         delete/2,
+         valid/2
          ]).
 
 -ifdef(TEST).
@@ -177,6 +178,316 @@ set_nth(N, L, V) ->
 delete(Keys, Obj) when is_tuple(Keys) ->
     set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, 'EJ_DELETE').
 
+%% valid - JSON term validation via spec
+
+%% context threaded through validity checking
+-record(spec_ctx, {
+          %% List of keys keeping track of where we are in a nested
+          %% JSON object.
+          path = [] :: [binary()],
+          %% Future use: use this to collect errors so that validation
+          %% can report a list of errors rather than just the first
+          %% one.
+          errors = [] :: [term()]
+         }).
+
+%% An re module regex (compiled) and a message that will be
+%% returned when nomatch is triggered.
+-type ej_string_match() :: {'string_match', {re:mp(), _}}.
+
+%% User supplied validation function. This must be an arity 1 fun that
+%% will be given the value and should return 'ok' if the value is
+%% good. Any other return is treated as an invalid result. The type
+%% name describes the expected type of the value. We might want to
+%% change this or remove it if we want to support a notion of 'any_of'
+%% matching. The advantage for now is that we can auto-generate a
+%% better missing message.
+-type ej_fun_match() :: {fun_match, {fun((json_term()) -> ok | error),
+                                        ej_json_type_name(), _}}.
+
+%% Map a value spec over each element of an array value.
+-type ej_array_map() :: {array_map, ej_json_val_spec()}.
+
+%% Walk the key/value pairs of a JSON object and execute the
+%% corresponding key and value specs for each pair.
+-type ej_object_map() :: {object_map, {{keys, ej_json_val_spec()},
+                                       {values, ej_json_val_spec()}}}.
+
+-type ej_json_spec() :: {[ej_json_spec_rule()]}.
+-type ej_json_spec_rule() :: {ej_json_key_spec(), ej_json_val_spec()}.
+-type ej_json_key_spec() :: binary() | {opt, binary()}.
+-type ej_json_val_spec() :: binary()             |
+                            ej_json_type_name()  |
+                            ej_string_match()    |
+                            ej_fun_match()       |
+                            ej_array_map()       |
+                            ej_object_map()      |
+                            {[ej_json_val_spec()]}.
+
+-spec valid(Spec :: ej_json_spec(), Obj:: json_object()) -> ok | #ej_invalid{}.
+%% @doc Validate JSON terms. Validity is determined by the
+%% `ej_json_spec()` provided which has the shape of EJSON terms but
+%% with keys and values describing what is expected. `Obj' is the
+%% EJSON term to be validated. This function will return `ok' if all
+%% validation rules succeed and a `#ej_invalid{}' record when the
+%% first failure is encountered (validation specs are processed in
+%% order, depth first).  NOTE: this function is experimental and the
+%% API and definition of specs is subject to change.
+valid({L}, Obj={OL}) when is_list(L) andalso is_list(OL) ->
+    valid(L, Obj, #spec_ctx{}).
+
+valid([{{Opt, Key}, ValSpec}|Rest], Obj, Ctx = #spec_ctx{path = Path} = Ctx)
+  when is_binary(Key) andalso (Opt =:= opt orelse Opt =:= req) ->
+    case {Opt, ej:get({Key}, Obj)} of
+        {opt, undefined} ->
+            valid(Rest, Obj, Ctx);
+        {req, undefined} ->
+            #ej_invalid{type = missing, key = make_key(Key, Path),
+                        expected_type = type_from_spec(ValSpec)};
+        {_, Val} ->
+            case check_value_spec(Key, ValSpec, Val, Ctx) of
+                ok ->
+                    valid(Rest, Obj, Ctx);
+                Error ->
+                    Error
+            end
+    end;
+valid([{Key, ValSpec}|Rest], Obj, #spec_ctx{} = Ctx) when is_binary(Key) ->
+    %% required key literal
+    valid([{{req, Key}, ValSpec}|Rest], Obj, Ctx);
+valid([], _Obj, _Ctx) ->
+    ok.
+
+make_path(Key, Path) ->
+    list_to_tuple(lists:reverse([Key | Path])).
+
+make_key(Key, Path) ->
+    join_path(make_path(Key, Path)).
+
+join_path(Path) ->
+    join_bins(tuple_to_list(Path), <<".">>).
+
+type_from_spec({string_match, _}) ->
+    string;
+type_from_spec({array_map, _}) ->
+    array;
+type_from_spec({object_map, _}) ->
+    object;
+type_from_spec({fun_match, {_, Type, _}}) ->
+    Type;
+type_from_spec(Literal) when is_binary(Literal) ->
+    string;
+type_from_spec(Literal) when is_integer(Literal) orelse is_float(Literal) ->
+    number;
+type_from_spec({L}) when is_list(L) ->
+    object;
+type_from_spec(Type) when Type =:= string;
+                          Type =:= number;
+                          Type =:= boolean;
+                          Type =:= array;
+                          Type =:= object;
+                          Type =:= null ->
+    Type;
+type_from_spec(Type) ->
+    error({unknown_spec, type_from_spec, Type}).
+
+
+json_type(Val) when is_binary(Val) ->
+    string;
+json_type({L}) when is_list(L) ->
+    object;
+json_type(L) when is_list(L) ->
+    array;
+json_type(null) ->
+    null;
+json_type(Bool) when Bool =:= true; Bool =:= false ->
+    boolean;
+json_type(N) when is_integer(N) orelse is_float(N) ->
+    number.
+
+check_value_spec(Key, {L}, Val={V}, #spec_ctx{path = Path} = Ctx) when is_list(L) andalso is_list(V) ->
+    %% traverse nested spec here
+    valid(L, Val, Ctx#spec_ctx{path = [Key|Path]});
+check_value_spec(Key, {L}, Val, #spec_ctx{path = Path}) when is_list(L) ->
+    %% was expecting nested spec, found non-object
+    #ej_invalid{type = json_type, key = make_key(Key, Path),
+                expected_type = object,
+                found = Val,
+                found_type = json_type(Val)};
+check_value_spec(Key, {string_match, {Regex, Msg}}, Val, #spec_ctx{path = Path}) when is_binary(Val) ->
+    %% string_match
+    case re:run(Val, Regex) of
+        nomatch ->
+            #ej_invalid{type = string_match, key = make_key(Key, Path),
+                        expected_type = string,
+                        found = Val,
+                        found_type = string,
+                        msg = Msg};
+        {match, _} ->
+            ok
+    end;
+check_value_spec(Key, {string_match, _}, Val, #spec_ctx{path = Path}) ->
+    %% expected string for string_match, got wrong type
+    #ej_invalid{type = json_type, key = make_key(Key, Path),
+                expected_type = string,
+                found_type = json_type(Val),
+                found = Val};
+
+check_value_spec(Key, {fun_match, {Fun, Type, Msg}}, Val, #spec_ctx{path = Path}) ->
+    %% user supplied fun
+    FoundType = json_type(Val),
+    case FoundType =:= Type of
+        false ->
+            #ej_invalid{type = json_type, key = make_key(Key, Path),
+                        expected_type = Type,
+                        found_type = FoundType,
+                        found = Val};
+        true ->
+            case Fun(Val) of
+                ok ->
+                    ok;
+                _ ->
+                    #ej_invalid{type = fun_match, key = make_key(Key, Path),
+                                expected_type = Type,
+                                found = Val,
+                                found_type = json_type(Val),
+                                msg = Msg}
+            end
+    end;
+
+check_value_spec(Key, {array_map, ItemSpec}, Val, #spec_ctx{path = Path}) when is_list(Val) ->
+    case do_array_map(ItemSpec, Val) of
+        ok ->
+            ok;
+        {bad_item, InvalidItem} ->
+            #ej_invalid{type = array_elt,
+                        key = make_key(Key, Path),
+                        expected_type = InvalidItem#ej_invalid.expected_type,
+                        found_type = InvalidItem#ej_invalid.found_type,
+                        found = InvalidItem#ej_invalid.found,
+                        msg = InvalidItem#ej_invalid.msg}
+    end;
+check_value_spec(Key, {array_map, _ItemSpec}, Val, #spec_ctx{path = Path}) ->
+    %% expected an array for array_map, found wrong type
+    #ej_invalid{type = json_type, key = make_key(Key, Path),
+                expected_type = array,
+                found_type = json_type(Val),
+                found = Val};
+
+check_value_spec(Key, {object_map, {{keys, KeySpec}, {values, ValSpec}}},
+                 Val={L}, #spec_ctx{path = Path}) when is_list(L) ->
+    case do_object_map(KeySpec, ValSpec, Val) of
+        ok ->
+            ok;
+        {bad_item, Type, InvalidItem} ->
+            #ej_invalid{type = Type,
+                        key = make_key(Key, Path),
+                        expected_type = InvalidItem#ej_invalid.expected_type,
+                        found_type = InvalidItem#ej_invalid.found_type,
+                        found = InvalidItem#ej_invalid.found,
+                        msg = InvalidItem#ej_invalid.msg}
+    end;
+check_value_spec(Key, {object_map, _ItemSpec}, Val, #spec_ctx{path = Path}) ->
+    %% expected an object for object_map, found wrong type
+    #ej_invalid{type = json_type, key = make_key(Key, Path),
+                expected_type = object,
+                found_type = json_type(Val),
+                found = Val};
+
+check_value_spec(_Key, string, Val, _Ctx) when is_binary(Val) ->
+    ok;
+check_value_spec(Key, string, Val, #spec_ctx{path = Path}) ->
+    invalid_for_type(string, Val, Key, Path);
+
+check_value_spec(_Key, object, {VL}, _Ctx) when is_list(VL) ->
+    ok;
+check_value_spec(Key, object, Val, #spec_ctx{path = Path}) ->
+    invalid_for_type(object, Val, Key, Path);
+
+check_value_spec(_Key, number, Val, _Ctx) when is_number(Val) ->
+    ok;
+check_value_spec(Key, number, Val, #spec_ctx{path = Path}) ->
+    invalid_for_type(number, Val, Key, Path);
+
+check_value_spec(_Key, array, Val, _Ctx) when is_list(Val) ->
+    ok;
+check_value_spec(Key, array, Val, #spec_ctx{path = Path}) ->
+    invalid_for_type(array, Val, Key, Path);
+
+check_value_spec(_Key, null, null, _Ctx) ->
+    ok;
+check_value_spec(Key, null, Val, #spec_ctx{path = Path}) ->
+    invalid_for_type(null, Val, Key, Path);
+
+check_value_spec(_Key, boolean, Val, _Ctx) when Val =:= true; Val =:= false ->
+    ok;
+check_value_spec(Key, boolean, Val, #spec_ctx{path = Path}) ->
+    invalid_for_type(boolean, Val, Key, Path);
+
+check_value_spec(_Key, Val, Val, _Ctx) when is_binary(Val) ->
+    %% exact match desired
+    ok;
+check_value_spec(Key, SpecVal, Val, #spec_ctx{path = Path}) when is_binary(SpecVal) ->
+    %% exact match failed
+    #ej_invalid{type = exact,
+                key = make_key(Key, Path),
+                found = Val,
+                expected_type = string,
+                found_type = json_type(Val),
+                msg = SpecVal};
+check_value_spec(Key, SpecVal, Val, #spec_ctx{path = Path}) ->
+    %% catch all
+    error({unknown_spec, SpecVal, {key, make_key(Key, Path)}, {value, Val}, {path, Path}}).
+
+
+invalid_for_type(ExpectType, Val, Key, Path) ->
+    #ej_invalid{type = json_type,
+                expected_type = ExpectType,
+                found_type = json_type(Val),
+                found = Val,
+                key = make_key(Key, Path)}.
+
+do_array_map(_ItemSpec, []) ->
+    ok;
+do_array_map(ItemSpec, [Item|Rest]) ->
+    %% FIXME: do we want to record element index?
+    case check_value_spec(<<"item_fake_key">>, ItemSpec, Item, #spec_ctx{}) of
+        ok ->
+            do_array_map(ItemSpec, Rest);
+        Error ->
+            {bad_item, Error}
+    end.
+
+do_object_map(KeySpec, ValSpec, {L}) when is_list(L) ->
+    do_object_map(KeySpec, ValSpec, L);
+do_object_map(_KeySpec, _ValSpec, []) ->
+    ok;
+do_object_map(KeySpec, ValSpec, [{Key, Val}|Rest]) ->
+    case check_value_spec(<<"item_fake_key_key">>, KeySpec, Key, #spec_ctx{}) of
+        ok ->
+            case check_value_spec(<<"item_fake_key_value">>, ValSpec, Val, #spec_ctx{}) of
+                ok ->
+                    do_object_map(KeySpec, ValSpec, Rest);
+                ValueError ->
+                    {bad_item, object_value, ValueError}
+            end;
+        KeyError ->
+            {bad_item, object_key, KeyError}
+    end.
+
+
+join_bins([], _Sep) ->
+    <<>>;
+join_bins(Bins, Sep) when is_binary(Sep) ->
+    join_bins(Bins, Sep, []).
+
+join_bins([B], _Sep, Acc) ->
+    iolist_to_binary(lists:reverse([B|Acc]));
+join_bins([B|Rest], Sep, Acc) ->
+    join_bins(Rest, Sep, [Sep, B | Acc]).
+
+
+%% end valid
 -ifdef(TEST).
 
 ej_test_() ->

@@ -3,9 +3,9 @@
 % Licensed under the Apache License, Version 2.0 (the "License");
 % you may not use this file except in compliance with the License.
 % You may obtain a copy of the License at
-% 
+%
 %     http://www.apache.org/licenses/LICENSE-2.0
-% 
+%
 % Unless required by applicable law or agreed to in writing, software
 % distributed under the License is distributed on an "AS IS" BASIS,
 % WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -36,3 +36,30 @@
 %% TODO: Tuple of arbitrary length can't be typed; consider list which
 %% can. Downside of list is confusion with strings.
 -type key_tuple()   :: tuple(). %{key_type()}.
+
+-type ej_spec_type() :: missing       |
+                        exact         |
+                        string_match  |
+                        json_type     |
+                        array_elt     |
+                        object_key    |
+                        object_value  |
+                        fun_match.
+
+-type ej_json_type_name() :: number   |
+                             null     |
+                             boolean  |
+                             string   |
+                             array    |
+                             object.
+
+%% The return record for validity checks
+-record(ej_invalid, {
+          type          :: ej_spec_type(),
+          key           :: binary(),
+          found         :: json_term()          | undefined,
+          found_type    :: ej_json_type_name()  | undefined,
+          expected_type :: ej_json_type_name()  | undefined,
+          %% defined by user in spec
+          msg           :: term() | undefined
+       }).
