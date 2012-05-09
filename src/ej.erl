@@ -394,6 +394,12 @@ check_value_spec(Key, {object_map, _ItemSpec}, Val, #spec_ctx{path = Path}) ->
                 found_type = json_type(Val),
                 found = Val};
 
+check_value_spec(Key, {any_of, {Specs, ErrorMsg}}, Val, Ctx) ->
+    check_any_of_value_specs(Key, Val, Ctx, Specs, ErrorMsg);
+
+check_value_spec(_Key, any_value, _Val, _Ctx) ->
+    ok;
+
 check_value_spec(_Key, string, Val, _Ctx) when is_binary(Val) ->
     ok;
 check_value_spec(Key, string, Val, #spec_ctx{path = Path}) ->
@@ -475,6 +481,23 @@ do_object_map(KeySpec, ValSpec, [{Key, Val}|Rest]) ->
             {bad_item, object_key, KeyError}
     end.
 
+check_any_of_value_specs(_Key, _Val, _Ctx, [], _ErrorMsg) ->
+    ok;
+check_any_of_value_specs(Key, Val, #spec_ctx{path = Path} = Ctx, [Spec], ErrorMsg) ->
+    case check_value_spec(Key, Spec, Val, Ctx) of
+        ok -> ok;
+        _Error -> #ej_invalid{type = any_of,
+                              key = make_key(Key, Path),
+                              found = Val,
+                              expected_type = any_value,
+                              found_type = json_type(Val),
+                              msg = ErrorMsg}
+    end;
+check_any_of_value_specs(Key, Val, Ctx, [Spec1|OtherSpecs], ErrorMsg) ->
+    case check_value_spec(Key, Spec1, Val, Ctx) of
+        ok -> ok;
+        _Error -> check_any_of_value_specs(Key, Val, Ctx, OtherSpecs, ErrorMsg)
+    end.
 
 join_bins([], _Sep) ->
     <<>>;

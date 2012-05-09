@@ -112,6 +112,30 @@ json_type_test_() ->
                   end} || {FT, Bad} <- BadForType(T) ] || T <- Types ],
     OkTests ++ MissingTests ++ BadTests.
 
+any_of_test_() ->
+    Spec = {[ {<<"blah">>, {any_of, {[<<"foo">>, <<"other_foo">>], <<"Value must be 'foo' or 'other_foo'">>}}} ]},
+    [
+     ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, <<"foo">>}]})),
+     ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, <<"other_foo">>}]})),
+     ?_assertEqual(#ej_invalid{type = any_of,
+                              key = <<"blah">>,
+                              expected_type = any_value,
+                              found_type = string,
+                              found = <<"bjork">>,
+                              msg = <<"Value must be 'foo' or 'other_foo'">>},
+                   ej:valid(Spec, {[{<<"blah">>, <<"bjork">>}]}))
+    ].
+
+any_value_test_() ->
+    Spec = {[ {<<"blah">>, any_value} ]},
+    [
+     ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, <<"foo">>}]})),
+     ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, 200}]})),
+     ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, true}]})),
+     ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, [1,2,3]}]})),
+     ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, [{"x",1}]}]}))
+    ].
+
 literal_key_and_value_test_() ->
     Spec = {[
              {<<"class">>, <<"Memo">>}
@@ -165,7 +189,7 @@ fun_match_test_() ->
                               found = 123},
                   ej:valid(Spec, BadType))
     ].
-    
+
 object_map_test_() ->
     Spec = {[
              {<<"object">>,
@@ -173,7 +197,7 @@ object_map_test_() ->
                  {keys, {string_match, regex_for(key)}},
                  {values, {string_match, regex_for(value)}}}}}
             ]},
-        
+
     Good = {[{<<"object">>,
               {[
                 {<<"k1">>, <<"v1">>},
@@ -223,7 +247,7 @@ object_map_test_() ->
                                found = <<"___">>,
                                msg = <<"^[[:alpha:][:digit:]]+$">>},
                    ej:valid(Spec, BadValue)),
-     
+
      ?_assertEqual(#ej_invalid{type = missing, key = <<"object">>,
                                expected_type = object},
                    ej:valid(Spec, BadMissing))
