@@ -234,7 +234,12 @@ delete(Keys, Obj) when is_tuple(Keys) ->
 %% order, depth first).  NOTE: this function is experimental and the
 %% API and definition of specs is subject to change.
 valid({L}, Obj={OL}) when is_list(L) andalso is_list(OL) ->
-    valid(L, Obj, #spec_ctx{}).
+    valid(L, Obj, #spec_ctx{});
+valid({L}, Obj) when is_list(L) ->
+    #ej_invalid{type = json_type, key = undefined,
+                expected_type = object,
+                found_type = json_type(Obj),
+                found = Obj}.
 
 valid([{{Opt, Key}, ValSpec}|Rest], Obj, Ctx = #spec_ctx{path = Path} = Ctx)
   when is_binary(Key) andalso (Opt =:= opt orelse Opt =:= req) ->
@@ -281,16 +286,32 @@ type_from_spec(Literal) when is_integer(Literal) orelse is_float(Literal) ->
     number;
 type_from_spec({L}) when is_list(L) ->
     object;
+type_from_spec({any_of, {Specs, _ErrorMsg}}) ->
+    type_from_any_of(Specs);
 type_from_spec(Type) when Type =:= string;
                           Type =:= number;
                           Type =:= boolean;
                           Type =:= array;
                           Type =:= object;
-                          Type =:= null ->
+                          Type =:= null;
+                          Type =:= any_value ->
     Type;
 type_from_spec(Type) ->
     error({unknown_spec, type_from_spec, Type}).
 
+type_from_any_of([]) ->
+    any_value;
+type_from_any_of([Spec]) ->
+    type_from_spec(Spec);
+type_from_any_of([Spec|OtherSpecs]) ->
+    NewType = type_from_spec(Spec),
+    TailType = type_from_any_of(OtherSpecs),
+    if
+        NewType == TailType -> NewType;
+        % TODO we could return an array of all the types if we wanted,
+        % which might be more accurate.
+        true -> any_value
+    end.
 
 json_type(Val) when is_binary(Val) ->
     string;
@@ -394,6 +415,12 @@ check_value_spec(Key, {object_map, _ItemSpec}, Val, #spec_ctx{path = Path}) ->
                 found_type = json_type(Val),
                 found = Val};
 
+check_value_spec(Key, {any_of, {Specs, ErrorMsg}}, Val, Ctx) ->
+    check_any_of_value_specs(Key, Val, Ctx, Specs, ErrorMsg);
+
+check_value_spec(_Key, any_value, _Val, _Ctx) ->
+    ok;
+
 check_value_spec(_Key, string, Val, _Ctx) when is_binary(Val) ->
     ok;
 check_value_spec(Key, string, Val, #spec_ctx{path = Path}) ->
@@ -475,6 +502,18 @@ do_object_map(KeySpec, ValSpec, [{Key, Val}|Rest]) ->
             {bad_item, object_key, KeyError}
     end.
 
+check_any_of_value_specs(Key, Val, #spec_ctx{path = Path}, [], ErrorMsg) ->
+    #ej_invalid{type = any_of,
+                key = make_key(Key, Path),
+                found = Val,
+                expected_type = any_value,
+                found_type = json_type(Val),
+                msg = ErrorMsg};
+check_any_of_value_specs(Key, Val, Ctx, [Spec1|OtherSpecs], ErrorMsg) ->
+    case check_value_spec(Key, Spec1, Val, Ctx) of
+        ok -> ok;
+        _Error -> check_any_of_value_specs(Key, Val, Ctx, OtherSpecs, ErrorMsg)
+    end.
 
 join_bins([], _Sep) ->
     <<>>;
