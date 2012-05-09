@@ -286,16 +286,32 @@ type_from_spec(Literal) when is_integer(Literal) orelse is_float(Literal) ->
     number;
 type_from_spec({L}) when is_list(L) ->
     object;
+type_from_spec({any_of, {Specs, _ErrorMsg}}) ->
+    type_from_any_of(Specs);
 type_from_spec(Type) when Type =:= string;
                           Type =:= number;
                           Type =:= boolean;
                           Type =:= array;
                           Type =:= object;
-                          Type =:= null ->
+                          Type =:= null;
+                          Type =:= any_value ->
     Type;
 type_from_spec(Type) ->
     error({unknown_spec, type_from_spec, Type}).
 
+type_from_any_of([]) ->
+    none;
+type_from_any_of([Spec]) ->
+    type_from_spec(Spec);
+type_from_any_of([Spec|OtherSpecs]) ->
+    NewType = type_from_spec(Spec),
+    TailType = type_from_any_of(OtherSpecs),
+    if
+        NewType == TailType -> NewType;
+        % TODO we could return an array of all the types if we wanted,
+        % which might be more accurate.
+        true -> any_value
+    end.
 
 json_type(Val) when is_binary(Val) ->
     string;

@@ -45,11 +45,14 @@ non_hash_fails_with(Val, ActualType) ->
                               found = Val}, ej:valid({[]}, Val)).
 
 non_hash_fails_test_() ->
-  non_hash_fails_with([], array),
-  non_hash_fails_with(<<"str">>, string),
-  non_hash_fails_with(10, number),
-  non_hash_fails_with(true, boolean),
-  non_hash_fails_with(null, null).
+    Tests = [
+        {<<"str">>, string},
+        {10, number},
+        {true, boolean},
+        {null, null},
+        {[], array}
+    ],
+    [ non_hash_fails_with(Val, ActualType) || {Val, ActualType} <- Tests ].
 
 array_map_test_() ->
     Spec = {[{<<"name">>, {string_match, regex_for(basic_name)}},
@@ -127,6 +130,7 @@ json_type_test_() ->
 
 any_of_test_() ->
     Spec = {[ {<<"blah">>, {any_of, {[<<"foo">>, <<"other_foo">>], <<"Value must be 'foo' or 'other_foo'">>}}} ]},
+    DifferentTypesSpec = {[ {<<"blah">>, {any_of, {[number, string], <<"Value must be a number or string">>}}} ]},
     [
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, <<"foo">>}]})),
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, <<"other_foo">>}]})),
@@ -136,7 +140,11 @@ any_of_test_() ->
                               found_type = string,
                               found = <<"bjork">>,
                               msg = <<"Value must be 'foo' or 'other_foo'">>},
-                   ej:valid(Spec, {[{<<"blah">>, <<"bjork">>}]}))
+                   ej:valid(Spec, {[{<<"blah">>, <<"bjork">>}]})),
+     ?_assertEqual(#ej_invalid{type = missing, key = <<"blah">>, expected_type = string},
+                   ej:valid(Spec, {[{}]})),
+     ?_assertEqual(#ej_invalid{type = missing, key = <<"blah">>, expected_type = any_value},
+                   ej:valid(DifferentTypesSpec, {[{}]}))
     ].
 
 any_value_test_() ->
@@ -147,7 +155,9 @@ any_value_test_() ->
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, true}]})),
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, null}]})),
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, [1,2,3]}]})),
-     ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, [{"x",1}]}]}))
+     ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, [{"x",1}]}]})),
+     ?_assertEqual(#ej_invalid{type = missing, key = <<"blah">>, expected_type = any_value},
+                   ej:valid(Spec, {[{}]}))
     ].
 
 literal_key_and_value_test_() ->
