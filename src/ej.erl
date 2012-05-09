@@ -300,7 +300,7 @@ type_from_spec(Type) ->
     error({unknown_spec, type_from_spec, Type}).
 
 type_from_any_of([]) ->
-    none;
+    any_value;
 type_from_any_of([Spec]) ->
     type_from_spec(Spec);
 type_from_any_of([Spec|OtherSpecs]) ->
@@ -502,18 +502,13 @@ do_object_map(KeySpec, ValSpec, [{Key, Val}|Rest]) ->
             {bad_item, object_key, KeyError}
     end.
 
-check_any_of_value_specs(_Key, _Val, _Ctx, [], _ErrorMsg) ->
-    ok;
-check_any_of_value_specs(Key, Val, #spec_ctx{path = Path} = Ctx, [Spec], ErrorMsg) ->
-    case check_value_spec(Key, Spec, Val, Ctx) of
-        ok -> ok;
-        _Error -> #ej_invalid{type = any_of,
-                              key = make_key(Key, Path),
-                              found = Val,
-                              expected_type = any_value,
-                              found_type = json_type(Val),
-                              msg = ErrorMsg}
-    end;
+check_any_of_value_specs(Key, Val, #spec_ctx{path = Path}, [], ErrorMsg) ->
+    #ej_invalid{type = any_of,
+                key = make_key(Key, Path),
+                found = Val,
+                expected_type = any_value,
+                found_type = json_type(Val),
+                msg = ErrorMsg};
 check_any_of_value_specs(Key, Val, Ctx, [Spec1|OtherSpecs], ErrorMsg) ->
     case check_value_spec(Key, Spec1, Val, Ctx) of
         ok -> ok;

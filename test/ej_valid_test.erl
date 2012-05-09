@@ -131,6 +131,7 @@ json_type_test_() ->
 any_of_test_() ->
     Spec = {[ {<<"blah">>, {any_of, {[<<"foo">>, <<"other_foo">>], <<"Value must be 'foo' or 'other_foo'">>}}} ]},
     DifferentTypesSpec = {[ {<<"blah">>, {any_of, {[number, string], <<"Value must be a number or string">>}}} ]},
+    EmptyAnyOfSpec = {[ {<<"blah">>, {any_of, {[], <<"No possible value could match.">>}}} ]},
     [
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, <<"foo">>}]})),
      ?_assertEqual(ok, ej:valid(Spec, {[{<<"blah">>, <<"other_foo">>}]})),
@@ -141,10 +142,19 @@ any_of_test_() ->
                               found = <<"bjork">>,
                               msg = <<"Value must be 'foo' or 'other_foo'">>},
                    ej:valid(Spec, {[{<<"blah">>, <<"bjork">>}]})),
+     ?_assertEqual(#ej_invalid{type = any_of,
+                              key = <<"blah">>,
+                              expected_type = any_value,
+                              found_type = string,
+                              found = <<"bjork">>,
+                              msg = <<"No possible value could match.">>},
+                   ej:valid(EmptyAnyOfSpec, {[{<<"blah">>, <<"bjork">>}]})),
      ?_assertEqual(#ej_invalid{type = missing, key = <<"blah">>, expected_type = string},
                    ej:valid(Spec, {[{}]})),
      ?_assertEqual(#ej_invalid{type = missing, key = <<"blah">>, expected_type = any_value},
-                   ej:valid(DifferentTypesSpec, {[{}]}))
+                   ej:valid(DifferentTypesSpec, {[{}]})),
+     ?_assertEqual(#ej_invalid{type = missing, key = <<"blah">>, expected_type = any_value},
+                   ej:valid(EmptyAnyOfSpec, {[{}]}))
     ].
 
 any_value_test_() ->
