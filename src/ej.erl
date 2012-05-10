@@ -394,12 +394,8 @@ check_value_spec(Key, {array_map, ItemSpec}, Val, #spec_ctx{path = Path}) when i
         ok ->
             ok;
         {bad_item, InvalidItem} ->
-            #ej_invalid{type = array_elt,
-                        key = make_key(Key, Path),
-                        expected_type = InvalidItem#ej_invalid.expected_type,
-                        found_type = InvalidItem#ej_invalid.found_type,
-                        found = InvalidItem#ej_invalid.found,
-                        msg = InvalidItem#ej_invalid.msg}
+            InvalidItem#ej_invalid{type = array_elt,
+                                   key = make_key(Key, Path)}
     end;
 check_value_spec(Key, {array_map, _ItemSpec}, Val, #spec_ctx{path = Path}) ->
     %% expected an array for array_map, found wrong type
@@ -414,12 +410,8 @@ check_value_spec(Key, {object_map, {{keys, KeySpec}, {values, ValSpec}}},
         ok ->
             ok;
         {bad_item, Type, InvalidItem} ->
-            #ej_invalid{type = Type,
-                        key = make_key(Key, Path),
-                        expected_type = InvalidItem#ej_invalid.expected_type,
-                        found_type = InvalidItem#ej_invalid.found_type,
-                        found = InvalidItem#ej_invalid.found,
-                        msg = InvalidItem#ej_invalid.msg}
+            InvalidItem#ej_invalid{type = Type,
+                                   key = make_key(Key, Path)}
     end;
 check_value_spec(Key, {object_map, _ItemSpec}, Val, #spec_ctx{path = Path}) ->
     %% expected an object for object_map, found wrong type
