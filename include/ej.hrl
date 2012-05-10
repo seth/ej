@@ -37,29 +37,31 @@
 %% can. Downside of list is confusion with strings.
 -type key_tuple()   :: tuple(). %{key_type()}.
 
--type ej_spec_type() :: missing       |
-                        exact         |
-                        string_match  |
-                        json_type     |
+-type ej_spec_type() :: any_of        |
+                        any_type      |
                         array_elt     |
+                        exact         |
+                        fun_match     |
+                        json_type     |
+                        missing       |
                         object_key    |
                         object_value  |
-                        fun_match.
+                        string_match.
 
--type ej_json_type_name() :: number   |
-                             null     |
+-type ej_json_type_name() :: array    |
                              boolean  |
-                             string   |
-                             array    |
-                             object.
+                             null     |
+                             number   |
+                             object   |
+                             string.
 
 %% The return record for validity checks
 -record(ej_invalid, {
           type          :: ej_spec_type(),
           key           :: binary(),
           found         :: json_term()          | undefined,
-          found_type    :: ej_json_type_name()  | undefined,
-          expected_type :: ej_json_type_name()  | undefined,
+          found_type    :: ej_json_type_name()  | any_value | undefined,
+          expected_type :: ej_json_type_name()  | any_value | undefined,
           %% defined by user in spec
           msg           :: term() | undefined
        }).
