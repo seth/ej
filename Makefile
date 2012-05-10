@@ -6,7 +6,7 @@ APP := cheferl
 all: deps
 	@./rebar compile
 
-dialyzer:
+dialyzer: all
 	@dialyzer -Wunderspecs -r ebin
 
 test:
