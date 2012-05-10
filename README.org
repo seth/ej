@@ -74,3 +74,9 @@ Erlang Questions]] mailing list and, in particular, by the reply from
 Richard O'Keefe.  Additional motivation from the very similar helper
 module =struct= included in the [[http://beebole.com/en/blog/erlang/tutorial-web-application-erlang/][sticky notes example application]] from
 the folks at BeeBole.
+
+** THANKS
+
+- Christopher Brown
+- Christopher Maier
+- John Keiser
