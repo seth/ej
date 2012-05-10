@@ -299,19 +299,25 @@ type_from_spec(Type) when Type =:= string;
 type_from_spec(Type) ->
     error({unknown_spec, type_from_spec, Type}).
 
+%% Attempt to find a type for an any_of spec. If all the containing
+%% specs have the same type, return that; otherwise, return
+%% 'any_value' as the type placeholder.
 type_from_any_of([]) ->
     any_value;
-type_from_any_of([Spec]) ->
-    type_from_spec(Spec);
-type_from_any_of([Spec|OtherSpecs]) ->
-    NewType = type_from_spec(Spec),
-    TailType = type_from_any_of(OtherSpecs),
-    if
-        NewType == TailType -> NewType;
-        % TODO we could return an array of all the types if we wanted,
-        % which might be more accurate.
-        true -> any_value
-    end.
+type_from_any_of(Specs) ->
+    type_from_any_of(Specs, unset).
+
+type_from_any_of([Spec | Rest], Ans) ->
+    CurType = type_from_spec(Spec),
+    case Ans of
+        PrevType when PrevType =:= unset;
+                      PrevType =:= CurType ->
+            type_from_any_of(Rest, CurType);
+        _DiffType ->
+            any_value
+    end;
+type_from_any_of([], Ans) ->
+    Ans.
 
 json_type(Val) when is_binary(Val) ->
     string;
