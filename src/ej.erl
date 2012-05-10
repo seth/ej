@@ -263,15 +263,21 @@ valid([{Key, ValSpec}|Rest], Obj, #spec_ctx{} = Ctx) when is_binary(Key) ->
 valid([], _Obj, _Ctx) ->
     ok.
 
-make_path(Key, Path) ->
-    list_to_tuple(lists:reverse([Key | Path])).
-
+-spec make_key(Key :: binary(), Path :: [binary()]) -> binary().
+%% Given a key and a list of keys in `Path' indicating the traversal
+%% path, build a JSON-style key separated by dots.
 make_key(Key, Path) ->
     join_path(make_path(Key, Path)).
+
+make_path(Key, Path) ->
+    list_to_tuple(lists:reverse([Key | Path])).
 
 join_path(Path) ->
     join_bins(tuple_to_list(Path), <<".">>).
 
+%% Return a JSON type name to be used as the expected_type based on a
+%% value spec. If no type can be determined or any type is accepted,
+%% 'any_value' should be returned.
 type_from_spec({string_match, _}) ->
     string;
 type_from_spec({array_map, _}) ->
@@ -319,6 +325,7 @@ type_from_any_of([Spec | Rest], Ans) ->
 type_from_any_of([], Ans) ->
     Ans.
 
+%% Map an EJSON term to JSON type name.
 json_type(Val) when is_binary(Val) ->
     string;
 json_type({L}) when is_list(L) ->
