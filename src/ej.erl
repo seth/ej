@@ -54,11 +54,15 @@
 %%
 -spec(get(key_tuple(), json_object() | json_plist()) -> json_term() | undefined).
 
+get({}, _Obj) ->
+    undefined;
 get(Keys, Obj) when is_tuple(Keys) ->
    get0(tuple_to_list(Keys), Obj).
 
 %% @doc same as get/2, but returns `Default' if the specified value was not found.
 -spec get(key_tuple(), json_object() | json_plist(), json_term()) -> json_term().
+get({}, _Obj, Default)  ->
+    Default;
 get(Keys, Obj, Default) when is_tuple(Keys) ->
     case get(Keys, Obj) of
         undefined ->
@@ -579,6 +583,9 @@ ej_test_() ->
             ?_assertEqual(undefined,
                           ej:get({"not_present"}, {struct, []})),
 
+            ?_assertEqual(undefined, ej:get({[]}, Widget)),
+
+            ?_assertEqual(undefined, ej:get({}, Widget)),
 
             ?_assertException(error, {index_for_non_list, _},
                               ej:get({"glossary", "GlossDiv", "GlossList",
@@ -590,7 +597,9 @@ ej_test_() ->
           {"ej:get with default",
            [
             ?_assertEqual(<<"1">>, ej:get({"widget", "version"}, Widget, "you'll never see this default")),
-            ?_assertEqual(<<"defaults rock">>, ej:get({"widget", "NOT_PRESENT"}, Widget, <<"defaults rock">>))
+            ?_assertEqual(<<"defaults rock">>, ej:get({"widget", "NOT_PRESENT"}, Widget, <<"defaults rock">>)),
+            ?_assertEqual(<<"a default">>, ej:get({}, Widget, <<"a default">>)),
+            ?_assertEqual(<<"a default">>, ej:get({[]}, Widget, <<"a default">>))
            ]},
 
           {"ej:get with json_plist",
