@@ -217,7 +217,7 @@ delete(Keys, Obj) when is_tuple(Keys) ->
 -type ej_object_map() :: {object_map, {{keys, ej_json_val_spec()},
                                        {values, ej_json_val_spec()}}}.
 
--type ej_json_spec() :: {[ej_json_spec_rule()]}.
+-type ej_json_spec() :: {[ej_json_spec_rule()]} | ej_object_map().
 -type ej_json_spec_rule() :: {ej_json_key_spec(), ej_json_val_spec()}.
 -type ej_json_key_spec() :: binary() | {opt, binary()}.
 -type ej_json_val_spec() :: binary()             |
@@ -237,6 +237,8 @@ delete(Keys, Obj) when is_tuple(Keys) ->
 %% first failure is encountered (validation specs are processed in
 %% order, depth first).  NOTE: this function is experimental and the
 %% API and definition of specs is subject to change.
+valid({object_map, _}=Spec, Obj={OL}) when is_list(OL) ->
+    check_value_spec(<<"no_key">>, Spec, Obj, #spec_ctx{});
 valid({L}, Obj={OL}) when is_list(L) andalso is_list(OL) ->
     valid(L, Obj, #spec_ctx{});
 valid({L}, Obj) when is_list(L) ->

@@ -353,6 +353,22 @@ nested_specs_test_() ->
             ],
     [ ?_assertEqual(Expect, ej:valid(Spec, In)) || {In, Expect} <- Tests ].
 
+value_spec_as_spec_test_() ->
+    Spec = {object_map, {{keys, string},
+                         {values, {array_map, string}}}},
+    Good = {[{<<"a">>, [<<"b">>]}]},
+    Empty = {[]},
+    EmptyArray = {[{<<"a">>, []}]},
+    NotArray = {[{<<"a">>, <<"bad">>}]},
+    WrongArrayType = {[{<<"a">>, [1, 2]}]},
+    [
+     ?_assertEqual(ok, ej:valid(Spec, Good)),
+     ?_assertEqual(ok, ej:valid(Spec, Empty)),
+     ?_assertEqual(ok, ej:valid(Spec, EmptyArray)),
+     ?_assertMatch(#ej_invalid{}, ej:valid(Spec, NotArray)),
+     ?_assertMatch(#ej_invalid{}, ej:valid(Spec, WrongArrayType))
+    ].
+
 basic(Name) ->
     {[{<<"name">>, Name}]}.
 
