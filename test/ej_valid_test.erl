@@ -264,6 +264,8 @@ object_map_test_() ->
 
     BadMissing = {[]},
 
+    BadNotObject = {[{<<"object">>, <<"notobject">>}]},
+
     [
      ?_assertEqual(ok, ej:valid(Spec, Good)),
      ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
@@ -284,7 +286,13 @@ object_map_test_() ->
 
      ?_assertEqual(#ej_invalid{type = missing, key = <<"object">>,
                                expected_type = object},
-                   ej:valid(Spec, BadMissing))
+                   ej:valid(Spec, BadMissing)),
+
+     ?_assertEqual(#ej_invalid{type = json_type, key = <<"object">>,
+                               expected_type = object,
+                               found_type = string,
+                               found = <<"notobject">>},
+                   ej:valid(Spec, BadNotObject))
     ].
 
 nested_specs_test_() ->
