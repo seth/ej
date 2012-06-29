@@ -7,6 +7,6 @@
                   kernel,
                   stdlib
                  ]},
-  {mod, { ej_app, []}},
+  {modules, []},
   {env, []}
  ]}.
