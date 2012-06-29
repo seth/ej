@@ -1,6 +1,6 @@
 {application, ej,
  [
-  {description, ""},
+  {description, "An Erlang JSON Helper Library"},
   {vsn, git},
   {registered, []},
   {applications, [
