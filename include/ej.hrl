@@ -23,14 +23,15 @@
 %% `ej:set' to update a value.
 %%
 %% @end
--type json_string() :: binary().
--type json_null()   :: null.
--type json_number() :: integer() | float().
--type json_array()  :: [json_term()].
--type json_plist()  :: [{json_string(), json_term()}].
--type json_object() :: {struct, json_plist()} | {json_plist()}. % mochijson or ejson
--type json_term()   :: json_string() | json_number() | json_array() |
-                       json_object() | json_null().
+-type json_string()  :: binary().
+-type json_null()    :: null.
+-type json_number()  :: integer() | float().
+-type json_boolean() :: 'true' | 'false'.
+-type json_array()   :: [json_term()].
+-type json_plist()   :: [{json_string(), json_term()}].
+-type json_object()  :: {struct, json_plist()} | {json_plist()}. % mochijson or ejson
+-type json_term()    :: json_string() | json_number() | json_array() |
+                        json_object() | json_null() | json_boolean().
 
 -type key_type()    :: binary() | integer() | first | last | new.
 %% TODO: Tuple of arbitrary length can't be typed; consider list which
