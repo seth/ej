@@ -6,8 +6,14 @@ APP := cheferl
 all: deps
 	@./rebar compile
 
-dialyzer: all
-	@dialyzer -Wunderspecs -r ebin
+DEPSOLVER_PLT=$(PWD)/.dialyzer.plt
+APPS=kernel stdlib
+
+$(DEPSOLVER_PLT):
+	@dialyzer --output_plt $(DEPSOLVER_PLT) --build_plt --apps $(APPS)
+
+dialyzer: all $(DEPSOLVER_PLT)
+	@dialyzer --plt $(DEPSOLVER_PLT) -Wunderspecs -r ebin
 
 test:
 	@./rebar eunit
