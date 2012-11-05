@@ -82,10 +82,12 @@ get0([], Value) ->
 
 get_value(Key, Obj) when is_list(Key) ->
     get_value(iolist_to_binary(Key), Obj);
-get_value(Key, {struct, L}) when is_binary(Key) ->
+get_value(Key, {struct, L}) when is_binary(Key); is_tuple(Key) ->
     get_value(Key, L);
 get_value(Key, {L}) when is_binary(Key) -> % alt form
     get_value(Key, L);
+get_value(Key, List=[{struct, _}|_T]) when is_binary(Key) ->
+    [get_value(Key, L) || L <- List];
 get_value(Key, PL=[{_, _}|_T]) when is_binary(Key) ->
     proplists:get_value(Key, PL);
 get_value(Key, [_H|_T]) when is_binary(Key) ->
@@ -98,6 +100,8 @@ get_value(last, List=[_H|_T]) ->
     lists:last(List);
 get_value(Index, List=[_H|_T]) when is_integer(Index) ->
     lists:nth(Index, List);
+get_value(KeyValue, List=[_H|_T]) when is_tuple(KeyValue) ->
+    matching_array_elements(KeyValue, List);
 get_value(Index, Obj) ->
     erlang:error({index_for_non_list, {Index, Obj}}).
 
@@ -105,8 +109,20 @@ as_binary(Key) when is_binary(Key) ->
     Key;
 as_binary(Key) when is_list(Key) ->
     iolist_to_binary(Key);
+as_binary(Key) when is_tuple(Key) ->
+    Key;
 as_binary(Key) when is_integer(Key) orelse is_atom(Key) ->
     Key.
+
+matching_array_elements(CompKey, List) ->
+    lists:filter(fun(E) -> matching_element(CompKey, E) end, List).
+
+matching_element({K, V}, {struct, E}) ->
+    Value = as_binary(V),
+    case proplists:get_value(as_binary(K), E) of
+      Value -> true;
+      _ -> false
+    end.
 
 %% @doc Set a value in `Obj'
 %%
@@ -610,6 +626,30 @@ ej_test_() ->
             ?_assertEqual(undefined, ej:get({"x"}, [{<<"a">>, <<"1">>}])),
             ?_assertEqual(undefined, ej:get({"x"}, []))
            ]},
+
+          {"ej:get from array by matching key",
+           fun() ->
+              Path1 = {"menu", "popup", "menuitem", {"value", "New"}},
+              ?assertMatch([{struct, [{<<"value">>,<<"New">>}|_]}], ej:get(Path1, Menu)),
+              Path2 = {"menu", "popup", "menuitem", {"value", "New"}, "onclick"},
+              ?assertEqual([<<"CreateNewDoc()">>], ej:get(Path2, Menu)),
+              PathNoneMatched = {"menu", "popup", "menuitem", {"value", "NotThere"}},
+              ?assertEqual([], ej:get(PathNoneMatched, Menu)),
+              PathDoesntExist = {"menu", "popup", "menuitem", {"value", "NotThere"}, "bar"},
+              ?assertEqual(undefined, ej:get(PathDoesntExist, Menu)),
+              Data = {struct, [
+                  {struct, [{<<"match">>, <<"me">>}]},
+                  {struct, [{<<"match">>, <<"me">>}]}
+              ]},
+              ComplexBeginning = {{"match", "me"}},
+              ?assertMatch([{struct, _}, {struct, _}], ej:get(ComplexBeginning, Data))
+            end},
+
+          {"ej:get value of nonexistant object after having used a complex query",
+           fun() ->
+              Path1 = {"menu", "popup", "menuitem", {"value", "NonExistant"}, "param"},
+              ?assertEqual(undefined, ej:get(Path1, Menu))
+            end},
 
           {"ej:set, replacing existing value",
            fun() ->
