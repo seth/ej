@@ -29,6 +29,7 @@
          get/2,
          get/3,
          set/3,
+         set_p/3,
          delete/2,
          valid/2
          ]).
@@ -82,10 +83,12 @@ get0([], Value) ->
 
 get_value(Key, Obj) when is_list(Key) ->
     get_value(iolist_to_binary(Key), Obj);
-get_value(Key, {struct, L}) when is_binary(Key) ->
+get_value(Key, {struct, L}) when is_binary(Key); is_tuple(Key) ->
     get_value(Key, L);
 get_value(Key, {L}) when is_binary(Key) -> % alt form
     get_value(Key, L);
+get_value(Key, List=[{struct, _}|_T]) when is_binary(Key) ->
+    lists:flatten([get_value(Key, L) || L <- List]);
 get_value(Key, PL=[{_, _}|_T]) when is_binary(Key) ->
     proplists:get_value(Key, PL);
 get_value(Key, [_H|_T]) when is_binary(Key) ->
@@ -98,6 +101,8 @@ get_value(last, List=[_H|_T]) ->
     lists:last(List);
 get_value(Index, List=[_H|_T]) when is_integer(Index) ->
     lists:nth(Index, List);
+get_value(KeyValue, List=[_H|_T]) when is_tuple(KeyValue) ->
+    matching_array_elements(KeyValue, List);
 get_value(Index, Obj) ->
     erlang:error({index_for_non_list, {Index, Obj}}).
 
@@ -105,8 +110,22 @@ as_binary(Key) when is_binary(Key) ->
     Key;
 as_binary(Key) when is_list(Key) ->
     iolist_to_binary(Key);
+as_binary(Key) when is_tuple(Key) ->
+    Key;
 as_binary(Key) when is_integer(Key) orelse is_atom(Key) ->
     Key.
+
+matching_array_elements(CompKey, List) ->
+    lists:filter(fun(E) -> matching_element(CompKey, E) end, List).
+
+matching_element({K, V}, {struct, E}) ->
+    Value = as_binary(V),
+    case proplists:get_value(as_binary(K), E) of
+      Value -> true;
+      _ -> false
+    end;
+matching_element(Key, E) ->
+    erlang:error({error_matching_element, {Key, E}}).
 
 %% @doc Set a value in `Obj'
 %%
@@ -116,22 +135,39 @@ as_binary(Key) when is_integer(Key) orelse is_atom(Key) ->
 %%
 -spec(set(key_tuple(), json_object(), json_term()) -> json_term()).
 set(Keys, Obj, Value) when is_tuple(Keys) ->
-    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value).
+    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value, []).
 
-set0([], _, Value) ->
+%% @doc Set a value in `Obj' and create missing intermediate
+%%      nodes if need be.
+%%
+%% This resembles the -p option in mkdir. If the intermediate
+%% elements in the structure are missing, then they are created.
+%% This is useful when creating complex JSON structures from scratch.
+%%
+%% The arguments are the same as for `set'.
+%%
+-spec(set_p(key_tuple(), json_object(), json_term()) -> json_term()).
+set_p(Keys, Obj, Value) when is_tuple(Keys) ->
+    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value, [create_missing]).
+
+set0([], _, Value, _) ->
     Value;
-set0([Key | Rest], {struct, P}, Value)
+set0([Key | Rest], {struct, P}, Value, Options)
   when is_binary(Key) orelse Key == 'EJ_DELETE' ->
-    case {get_value(Key, P), length(Rest), Value} of
-        {undefined, Len, _} when Len > 0 ->
-            erlang:error({no_path, Key});
-        {_, Len, 'EJ_DELETE'} when Len == 0 ->
-            {struct, lists:keydelete(Key, 1, P)};
-        {Downstream, _, _} ->
+    case {get_value(Key, P), length(Rest), Value, proplists:get_value(create_missing, Options)} of
+        %% Is matchen when we creating new nested structures
+        {undefined, _, _, true} ->
             {struct, lists:keystore(Key, 1, P,
-                                    {Key, set0(Rest, Downstream, Value)})}
+                                    {Key, set0(Rest, {struct, []}, Value, Options)})};
+        {undefined, Len, _, _} when Len > 0 ->
+            erlang:error({no_path, Key});
+        {_, Len, 'EJ_DELETE', _} when Len == 0 ->
+            {struct, lists:keydelete(Key, 1, P)};
+        {Downstream, _, _, _} ->
+            {struct, lists:keystore(Key, 1, P,
+                                    {Key, set0(Rest, Downstream, Value, Options)})}
     end;
-set0([Key | Rest], {P}, Value) % clean this up? alt form
+set0([Key | Rest], {P}, Value, Options) % clean this up? alt form
   when is_binary(Key) orelse Key == 'EJ_DELETE' ->
     case {get_value(Key, P), length(Rest), Value} of
         {undefined, Len, _} when Len > 0 ->
@@ -140,11 +176,38 @@ set0([Key | Rest], {P}, Value) % clean this up? alt form
             {lists:keydelete(Key, 1, P)};
         {Downstream, _, _} ->
             {lists:keystore(Key, 1, P,
-                            {Key, set0(Rest, Downstream, Value)})}
+                            {Key, set0(Rest, Downstream, Value, Options)})}
     end;
-set0([new | []], P, Value) when is_list(P) ->
+set0([new | []], P, Value, _Options) when is_list(P) ->
     [Value|P];
-set0([Idx | Rest], P, Value)
+set0([Key = {_,_}], P, 'EJ_DELETE', _Options) when is_list(P) ->
+    lists:filter(fun(E) -> not matching_element(Key, E) end, P);
+set0([{_,_}], P, Object, _Options) when not is_tuple(Object) ->
+    erlang:error({replacing_object_with_value, {P, Object}});
+set0(Key = [{_,_} | _], {struct, P}, Value, Options) ->
+    set0(Key, P, Value, Options);
+set0([ Filter = {K,_} | Rest], P, Value, Options) when is_list(P) ->
+    {Existed, Res} = lists:foldl(fun(E, {WhetherFound, Acc}) ->
+        case matching_element(Filter, E) of
+            true -> 
+                {struct, ChildElems} = set0(Rest, E, Value, Options),
+                Child = {struct, lists:keystore(as_binary(K), 1, ChildElems, composite_key_as_binary(Filter))},
+                {true, [Child | Acc]};
+            false -> 
+                {WhetherFound, [E | Acc]}
+        end
+    end, {false, []}, P),
+    case {Existed, proplists:get_value(create_missing, Options)} of
+        {true, _} ->
+            Res;
+        {false, true} ->
+            {struct, ChildElems} = set0(Rest, {struct, []}, Value, Options),
+            Child = {struct, lists:keystore(K, 1, ChildElems, composite_key_as_binary(Filter))},
+            [Child | Res];
+        {false, _} ->
+            erlang:error({no_path, Filter})
+    end;
+set0([Idx | Rest], P, Value, Options)
   when is_integer(Idx) orelse is_atom(Idx); is_list(P) ->
     case {get_value(Idx, P), length(Rest), Value} of
         {undefined, Len, _} when Len > 0 ->
@@ -152,8 +215,10 @@ set0([Idx | Rest], P, Value)
         {_, Len, 'EJ_DELETE'} when Len == 0 ->
             set_nth(Idx, P, 'EJ_DELETE');
         {Downstream, _, _} ->
-            set_nth(Idx, P, set0(Rest, Downstream, Value))
+            set_nth(Idx, P, set0(Rest, Downstream, Value, Options))
 end.
+
+composite_key_as_binary({K, V}) -> {as_binary(K), as_binary(V)}.
 
 set_nth(first, [_H|T], 'EJ_DELETE') ->
     T;
@@ -180,7 +245,7 @@ set_nth(N, L, V) ->
 -spec(delete(key_tuple(), json_object()) -> json_object()).
 
 delete(Keys, Obj) when is_tuple(Keys) ->
-    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, 'EJ_DELETE').
+    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, 'EJ_DELETE', []).
 
 %% valid - JSON term validation via spec
 
@@ -611,6 +676,47 @@ ej_test_() ->
             ?_assertEqual(undefined, ej:get({"x"}, []))
            ]},
 
+          {"ej:get from array by matching key",
+           fun() ->
+              Path1 = {"menu", "popup", "menuitem", {"value", "New"}},
+              ?assertMatch([{struct, [{<<"value">>,<<"New">>}|_]}], ej:get(Path1, Menu)),
+              Path2 = {"menu", "popup", "menuitem", {"value", "New"}, "onclick"},
+              ?assertEqual([<<"CreateNewDoc()">>], ej:get(Path2, Menu)),
+              PathNoneMatched = {"menu", "popup", "menuitem", {"value", "NotThere"}},
+              ?assertEqual([], ej:get(PathNoneMatched, Menu)),
+              PathDoesntExist = {"menu", "popup", "menuitem", {"value", "NotThere"}, "bar"},
+              ?assertEqual(undefined, ej:get(PathDoesntExist, Menu)),
+              Data = {struct, [
+                  {struct, [{<<"match">>, <<"me">>}]},
+                  {struct, [{<<"match">>, <<"me">>}]}
+              ]},
+              ComplexBeginning = {{"match", "me"}},
+              ?assertMatch([{struct, _}, {struct, _}], ej:get(ComplexBeginning, Data)),
+              ComplexBeginningDeeper = {{"match", "me"}, "match"},
+              ?assertMatch([<<"me">>, <<"me">>], ej:get(ComplexBeginningDeeper, Data))
+            end},
+
+          {"ej:get with multi-level array matching",
+           fun() ->
+                %% When doing multilevel deep array matching, we want the
+                %% array returned to be a single top level list, and not
+                %% a nested list of lists ...
+                Data = {struct,[
+                   {<<"users">>, [
+                         {struct,[{<<"id">>,<<"sebastian">>},
+                                  {<<"books">>, [
+                                     {struct, [{<<"title">>, <<"faust">>},
+                                               {<<"rating">>, 5}]}
+                                  ]}
+                         ]}
+                   ]}
+                ]},
+                Path = {"users", {"id", "sebastian"}, "books", {"title", "faust"}, "rating"},
+                Result = ej:get(Path, Data),
+                ?assertEqual([5], Result)
+            end},
+
+
           {"ej:set, replacing existing value",
            fun() ->
                    Path = {"widget", "window", "name"},
@@ -711,6 +817,187 @@ ej_test_() ->
                    ?assertEqual(4, length(List))
            end},
 
+          {"ej:set_p creates intermediate missing nodes",
+           fun() ->
+                   StartData = {struct,[]},
+                   EndData = {struct,[{<<"a">>,
+                      {struct,[{<<"b">>,
+                          {struct, [{<<"c">>, <<"value">>}]}
+                      }]}
+                   }]},
+                   Path = {"a", "b", "c"},
+                   Result = ej:set_p(Path, StartData, <<"value">>),
+                   ?assertEqual(EndData, Result),
+                   ?assertEqual(<<"value">>, ej:get(Path, Result)),
+                   Path2 = {"1", "2"},
+                   Result2 = ej:set_p(Path2, Result, <<"other-value">>),
+                   ?assertEqual(<<"other-value">>, ej:get(Path2, Result2)),
+                   %% Does not affect existing values
+                   ?assertEqual(<<"value">>, ej:get(Path, Result2))
+           end},
+
+
+          {"ej:set new value in an object at a complex path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", {"value", "New"}, "alt"},
+                   Val = <<"helptext">>,
+                   Menu1 = ej:set(Path, Menu, Val),
+                   ?assertMatch([<<"helptext">>], ej:get(Path, Menu1))
+           end},
+
+          {"ej:set_p value in a non-existent object at a complex path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", {"value", "Edit"}},
+                   Path2 = {"menu", "popup", "menuitem", {"value", "Edit"}, "text"},
+                   Path3 = {"menu", "popup", "menuitem", {"value", "Edit"}, "value"},
+                   Val = {struct, [{<<"text">>, <<"helptext">>}]},
+                   Menu1 = ej:set_p(Path, Menu, Val),
+                   ?assertMatch([<<"helptext">>], ej:get(Path2, Menu1)),
+                   ?assertEqual([<<"Edit">>], ej:get(Path3, Menu1))
+           end},
+
+          {"ej:set new value in a object at a complex path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", {"value", "New"}},
+                   Path2 = {"menu", "popup", "menuitem", {"value", "New"}, "onclick"},
+                   Val = {struct, [{<<"onclick">>, <<"CreateDifferentNewDoct()">>}]},
+                   Menu1 = ej:set(Path, Menu, Val),
+                   ?assertEqual([<<"CreateDifferentNewDoct()">>], ej:get(Path2, Menu1)),
+                   Path3 = {"menu", "popup", "menuitem", {"value", "New"}, "speed"},
+                   ValHigh = <<"high">>,
+                   Menu2 = ej:set(Path3, Menu1, ValHigh),
+                   ?assertEqual([ValHigh], ej:get(Path3, Menu2))
+           end},
+
+          {"ej:set replace multiple children of a complex path",
+           fun() ->
+                   %% We want the ability to affect multiple array elements
+                   %% when a complex selector returns more than one match.
+                   %% In this case all the selected array elements should be
+                   %% replaced.
+                   StartData = {struct, [
+                      {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 1}]},
+                      {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 2}]}
+                   ]},
+                   Path = {{"match", "me"}},
+                   Path2 = {{"match", "me"}, "more"},
+                   Val = {struct, [{<<"more">>, <<"content">>}]},
+                   Result = ej:set(Path, StartData, Val),
+                   ?assertMatch([<<"content">>, <<"content">>], ej:get(Path2, Result))
+           end},
+
+          {"ej:set replace multiple children deep in a complex path",
+           fun() ->
+                   %% We want the ability to affect multiple array elements
+                   %% when a complex selector returns more than one match.
+                   %% In this case we show that the array does not have to
+                   %% be at the top level.
+                   StartData = {struct, [{<<"parent">>, [
+                          {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 1}]},
+                          {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 2}]}
+                          ]}
+                   ]},
+                   Path = {"parent", {"match", "me"}},
+                   Path2 = {"parent", {"match", "me"}, "more"},
+                   Val = {struct, [{<<"more">>, <<"content">>}]},
+                   EndData = ej:set(Path, StartData, Val),
+                   ?assertMatch([<<"content">>, <<"content">>], ej:get(Path2, EndData))
+           end},
+
+          {"ej:set should not allow replacing an array element at a complex path with a pure value",
+           fun() ->
+                   %% If the user has made a filtered selection on an array,
+                   %% then all the elements in the array are objects.
+                   %% Replacing the matched selection with a non-object value
+                   %% will break this constraint.
+                   Data = {struct, [{struct, [{<<"match">>, <<"me">>}]}]},
+                   Path = {{"match", "me"}},
+                   Val = <<"pure-value-and-not-a-struct">>,
+                   ?assertException(error, {replacing_object_with_value, _},
+                                      ej:set(Path, Data, Val))
+           end},
+
+          {"ej:set a value within array",
+           fun() ->
+                   %% We should be able to set values on elements we
+                   %% have filtered out of an array, rather than just
+                   %% replacing them.
+                   StartData = {struct,[
+                      {<<"users">>, [
+                            {struct,[{<<"id">>,<<"sebastian">>}]}
+                      ]}
+                   ]},
+                   EndData = {struct,[
+                      {<<"users">>, [
+                            {struct,[{<<"id">>,<<"sebastian">>},
+                                     {<<"books">>, []}
+                            ]}
+                      ]}
+                   ]},
+                   Path = {"users", {"id", "sebastian"}, "books"},
+                   Val = [],
+                   Result = ej:set(Path, StartData, Val),
+                   ?assertEqual(EndData, Result)
+           end},
+
+          {"ej:set should throw error for trying to missing intermediate nodes",
+           fun() ->
+                   %% If we request a composite path that doesn't exist,
+                   %% and we are using set, rather than set_p, then we
+                   %% should get an error thrown at us.
+                   Path = {{"id", "seb"}},
+                   Val = {struct, [{<<"continent">>, <<"europe">>}]},
+                   ?assertException(error, {no_path, _},
+                                    ej:set(Path, {struct, []}, Val))
+           end},
+          {"ej:set_p should construct intermediate nodes if missing",
+           fun() ->
+                   %% If we request a composite path that doesn't exist,
+                   %% the missing nodes should be created for us dynamically
+                   %% to match the filtering criteria we are searching for.
+                   StartData = {struct,[]},
+                   Path = {"users", {"id", "seb"}, "room", {"room_id", "living-room"}, "books", {"title", "faust"}, "rating"},
+                   Val = 5,
+                   Result = ej:set_p(Path, StartData, Val),
+                   ?assertEqual([5], ej:get(Path, Result))
+           end},
+
+          {"ej:set_p should create intermediate nodes if missing in existing structures",
+           fun() ->
+                   %% If we request a composite path that doesn't exist,
+                   %% the missing nodes should be created for us dynamically
+                   %% to match the filtering criteria we are searching for.
+                   %% Furthermore, this should not affect old values already existing in the 
+                   %% same structure.
+                   StartData = {struct,[{<<"users">>,[
+                        {struct,[{<<"rooms">>,[
+                                    {struct,[{<<"books">>,[
+                                                {struct,[{<<"rating">>,5},{<<"title">>,<<"faust">>}]}
+                                          ]},{<<"room_id">>,<<"livingroom">>}
+                                    ]}
+                              ]},{<<"id">>,<<"seb">>}]
+                        }]
+                   }]},
+                   ValidPath = {"users", {"id", "seb"}, 
+                                "rooms", {"room_id", "livingroom"}, 
+                                "books", {"title", "faust"}, "rating"},
+                   ?assertEqual([5], ej:get(ValidPath, StartData)),
+                   NewPath = {"users", {"id", "seb"}, 
+                              "rooms", {"room_id", "bathroom"}, 
+                              "sink"},
+                   NewValue = true,
+                   Result = ej:set_p(NewPath, StartData, NewValue),
+                   ?assertEqual([true], ej:get(NewPath, Result)),
+                   OtherPath = {"users", {"id", "seb"}, "computers", {"laptop", true}, "name"},
+                   OtherValue = <<"paris">>,
+                   Result1 = ej:set_p(OtherPath, Result, OtherValue),
+                   io:format("~p", [Result1]),
+                   ?assertEqual([<<"paris">>], ej:get(OtherPath, Result1)),
+                   %% Old values still valid
+                   ?assertEqual([5], ej:get(ValidPath, Result1)),
+                   ?assertEqual([true], ej:get(NewPath, Result1))
+           end},
+
           {"ej:remove",
            fun() ->
                    Path = {"glossary", "GlossDiv", "GlossList", "GlossEntry", "Abbrev"},
@@ -724,6 +1011,40 @@ ej_test_() ->
                                                     "Acronym"}, Glossary1)),
                    ?assertEqual(<<"S">>, ej:get({"glossary", "GlossDiv",
                                                  "title"}, Glossary1))
+           end},
+
+          {"ej:remove parameter at complex path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", {"value", "New"}, "onclick"},
+                   Orig = ej:get(Path, Menu),
+                   ?assert(undefined /= Orig),
+                   Menu1 = ej:delete(Path, Menu),
+                   ?assertEqual([undefined], ej:get(Path, Menu1)),
+                   % verify some structure
+                   VerifyPath = {"menu", "popup", "menuitem", {"value", "New"}, "value"},
+                   ?assertEqual([<<"New">>], ej:get(VerifyPath, Menu1)),
+                   % verify that we didn't delete siblings
+                   VerifyOpen = {"menu", "popup", "menuitem", {"value", "Open"}, "onclick"},
+                   ?assertEqual([<<"OpenDoc()">>], ej:get(VerifyOpen, Menu1)),
+                   VerifyClose = {"menu", "popup", "menuitem", {"value", "Close"}, "onclick"},
+                   ?assertEqual([<<"CloseDoc()">>], ej:get(VerifyClose, Menu1))
+           end},
+
+          {"ej:remove object at complex path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", {"value", "New"}},
+                   Orig = ej:get(Path, Menu),
+                   ?assert([] /= Orig),
+                   Menu1 = ej:delete(Path, Menu),
+                   ?assertEqual([], ej:get(Path, Menu1)),
+                   % verify some structure
+                   VerifyPath = {"menu", "popup", "menuitem", {"value", "New"}, "value"},
+                   ?assertEqual(undefined, ej:get(VerifyPath, Menu1)),
+                   % % verify that we didn't delete siblings
+                   VerifyOpen = {"menu", "popup", "menuitem", {"value", "Open"}, "onclick"},
+                   ?assertEqual([<<"OpenDoc()">>], ej:get(VerifyOpen, Menu1)),
+                   VerifyClose = {"menu", "popup", "menuitem", {"value", "Close"}, "onclick"},
+                   ?assertEqual([<<"CloseDoc()">>], ej:get(VerifyClose, Menu1))
            end}
          ]
  end
