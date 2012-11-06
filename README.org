@@ -57,6 +57,11 @@ And here's ej in action:
 > ej:get({"menu", "popup", "menuitem", first, "value"}, Obj).  
 <<"New">>
 
+% You can also access list elements by specifying a property
+% of the element. This is particular useful when you do not
+% know the position of the element.
+> ej:get({"menu", "popup", "menuitem", {"value", "New"}, Obj).  
+
 % set a value
 Obj2 = ej:set({"menu", "id"}, Obj, <<"abc123">>).
 
