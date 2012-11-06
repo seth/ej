@@ -80,3 +80,8 @@ the folks at BeeBole.
 - Christopher Brown
 - Christopher Maier
 - John Keiser
+
+** Build status
+
+#+ATTR_HTML: alt="Build status images" title="Build status on Travis-CI"
+[[https://travis-ci.org/seth/ej.png]]
