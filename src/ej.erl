@@ -160,6 +160,24 @@ set0([Key | Rest], {P}, Value) % clean this up? alt form
     end;
 set0([new | []], P, Value) when is_list(P) ->
     [Value|P];
+set0([Key = {_,_}], P, 'EJ_DELETE') when is_list(P) ->
+    lists:filter(fun(E) -> not matching_element(Key, E) end, P);
+set0(Key = [{_,_}], {struct, P}, Values) when is_list(P) ->
+    {struct, set0(Key, P, Values)};
+set0([Key = {K,_}], P, {struct, Values}) when is_list(P) ->
+    NewElement = {struct, lists:keystore(as_binary(K), 1, Values, composite_key_as_binary(Key))},
+    case length(matching_array_elements(Key, P)) of
+        0 -> [NewElement | P];
+        _ -> [case matching_element(Key, E) of
+                  true -> NewElement;
+                  false -> E
+              end || E <- P ]
+    end;
+set0([Key | Rest], P, Value) when is_list(P), is_tuple(Key) ->
+    [ case matching_element(Key, E) of
+        true -> set0(Rest, E, Value);
+        false -> E
+      end || E <- P ];
 set0([Idx | Rest], P, Value)
   when is_integer(Idx) orelse is_atom(Idx); is_list(P) ->
     case {get_value(Idx, P), length(Rest), Value} of
@@ -170,6 +188,8 @@ set0([Idx | Rest], P, Value)
         {Downstream, _, _} ->
             set_nth(Idx, P, set0(Rest, Downstream, Value))
 end.
+
+composite_key_as_binary({K, V}) -> {as_binary(K), as_binary(V)}.
 
 set_nth(first, [_H|T], 'EJ_DELETE') ->
     T;
@@ -751,6 +771,65 @@ ej_test_() ->
                    ?assertEqual(4, length(List))
            end},
 
+          {"ej:set new value in an object at a complex path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", {"value", "New"}, "alt"},
+                   Val = {struct, [{<<"text">>, <<"helptext">>}]},
+                   Menu1 = ej:set(Path, Menu, Val),
+                   ?assertMatch([Val], ej:get(Path, Menu1))
+           end},
+
+          {"ej:set value in a non-existent object at a complex path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", {"value", "Edit"}},
+                   Path2 = {"menu", "popup", "menuitem", {"value", "Edit"}, "text"},
+                   Path3 = {"menu", "popup", "menuitem", {"value", "Edit"}, "value"},
+                   Val = {struct, [{<<"text">>, <<"helptext">>}]},
+                   Menu1 = ej:set(Path, Menu, Val),
+                   ?assertMatch([<<"helptext">>], ej:get(Path2, Menu1)),
+                   ?assertEqual([<<"Edit">>], ej:get(Path3, Menu1))
+           end},
+
+          {"ej:set replace value in a object at a complex path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", {"value", "New"}},
+                   Path2 = {"menu", "popup", "menuitem", {"value", "New"}, "onclick"},
+                   Val = {struct, [{<<"onclick">>, <<"CreateDifferentNewDoct()">>}]},
+                   Menu1 = ej:set(Path, Menu, Val),
+                   ?assertEqual([<<"CreateDifferentNewDoct()">>], ej:get(Path2, Menu1)),
+                   Path3 = {"menu", "popup", "menuitem", {"value", "New"}, "speed"},
+                   ValHigh = <<"high">>,
+                   Menu2 = ej:set(Path3, Menu1, ValHigh),
+                   ?assertEqual([ValHigh], ej:get(Path3, Menu2))
+           end},
+
+          {"ej:set replace multiple children of a complex path",
+           fun() ->
+                   StartData = {struct, [
+                      {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 1}]},
+                      {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 2}]}
+                   ]},
+                   Path = {{"match", "me"}},
+                   Path2 = {{"match", "me"}, "more"},
+                   Val = {struct, [{<<"more">>, <<"content">>}]},
+                   EndData = ej:set(Path, StartData, Val),
+                   ?assertMatch([<<"content">>, <<"content">>], ej:get(Path2, EndData))
+           end},
+
+          {"ej:set replace multiple children deep in a complex path",
+           fun() ->
+                   StartData = {struct, [{<<"parent">>, [
+                          {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 1}]},
+                          {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 2}]}
+                          ]}
+                   ]},
+                   Path = {"parent", {"match", "me"}},
+                   Path2 = {"parent", {"match", "me"}, "more"},
+                   Val = {struct, [{<<"more">>, <<"content">>}]},
+                   EndData = ej:set(Path, StartData, Val),
+                   ?assertMatch([<<"content">>, <<"content">>], ej:get(Path2, EndData))
+           end},
+
           {"ej:remove",
            fun() ->
                    Path = {"glossary", "GlossDiv", "GlossList", "GlossEntry", "Abbrev"},
@@ -764,6 +843,40 @@ ej_test_() ->
                                                     "Acronym"}, Glossary1)),
                    ?assertEqual(<<"S">>, ej:get({"glossary", "GlossDiv",
                                                  "title"}, Glossary1))
+           end},
+
+          {"ej:remove parameter at complex path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", {"value", "New"}, "onclick"},
+                   Orig = ej:get(Path, Menu),
+                   ?assert(undefined /= Orig),
+                   Menu1 = ej:delete(Path, Menu),
+                   ?assertEqual([undefined], ej:get(Path, Menu1)),
+                   % verify some structure
+                   VerifyPath = {"menu", "popup", "menuitem", {"value", "New"}, "value"},
+                   ?assertEqual([<<"New">>], ej:get(VerifyPath, Menu1)),
+                   % verify that we didn't delete siblings
+                   VerifyOpen = {"menu", "popup", "menuitem", {"value", "Open"}, "onclick"},
+                   ?assertEqual([<<"OpenDoc()">>], ej:get(VerifyOpen, Menu1)),
+                   VerifyClose = {"menu", "popup", "menuitem", {"value", "Close"}, "onclick"},
+                   ?assertEqual([<<"CloseDoc()">>], ej:get(VerifyClose, Menu1))
+           end},
+
+          {"ej:remove object at complex path",
+           fun() ->
+                   Path = {"menu", "popup", "menuitem", {"value", "New"}},
+                   Orig = ej:get(Path, Menu),
+                   ?assert([] /= Orig),
+                   Menu1 = ej:delete(Path, Menu),
+                   ?assertEqual([], ej:get(Path, Menu1)),
+                   % verify some structure
+                   VerifyPath = {"menu", "popup", "menuitem", {"value", "New"}, "value"},
+                   ?assertEqual(undefined, ej:get(VerifyPath, Menu1)),
+                   % % verify that we didn't delete siblings
+                   VerifyOpen = {"menu", "popup", "menuitem", {"value", "Open"}, "onclick"},
+                   ?assertEqual([<<"OpenDoc()">>], ej:get(VerifyOpen, Menu1)),
+                   VerifyClose = {"menu", "popup", "menuitem", {"value", "Close"}, "onclick"},
+                   ?assertEqual([<<"CloseDoc()">>], ej:get(VerifyClose, Menu1))
            end}
          ]
  end
