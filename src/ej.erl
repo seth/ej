@@ -87,7 +87,7 @@ get_value(Key, {struct, L}) when is_binary(Key); is_tuple(Key) ->
 get_value(Key, {L}) when is_binary(Key) -> % alt form
     get_value(Key, L);
 get_value(Key, List=[{struct, _}|_T]) when is_binary(Key) ->
-    [get_value(Key, L) || L <- List];
+    lists:flatten([get_value(Key, L) || L <- List]);
 get_value(Key, PL=[{_, _}|_T]) when is_binary(Key) ->
     proplists:get_value(Key, PL);
 get_value(Key, [_H|_T]) when is_binary(Key) ->
@@ -122,7 +122,9 @@ matching_element({K, V}, {struct, E}) ->
     case proplists:get_value(as_binary(K), E) of
       Value -> true;
       _ -> false
-    end.
+    end;
+matching_element(Key, E) ->
+    erlang:error({error_matching_element, {Key, E}}).
 
 %% @doc Set a value in `Obj'
 %%
@@ -139,8 +141,10 @@ set0([], _, Value) ->
 set0([Key | Rest], {struct, P}, Value)
   when is_binary(Key) orelse Key == 'EJ_DELETE' ->
     case {get_value(Key, P), length(Rest), Value} of
-        {undefined, Len, _} when Len > 0 ->
-            erlang:error({no_path, Key});
+        %% Is matchen when we creating new nested structures
+        {undefined, _, _} ->
+            {struct, lists:keystore(Key, 1, P,
+                                    {Key, set0(Rest, {struct, []}, Value)})};
         {_, Len, 'EJ_DELETE'} when Len == 0 ->
             {struct, lists:keydelete(Key, 1, P)};
         {Downstream, _, _} ->
@@ -160,24 +164,45 @@ set0([Key | Rest], {P}, Value) % clean this up? alt form
     end;
 set0([new | []], P, Value) when is_list(P) ->
     [Value|P];
+%% When we are deleting using a complex pattern
 set0([Key = {_,_}], P, 'EJ_DELETE') when is_list(P) ->
     lists:filter(fun(E) -> not matching_element(Key, E) end, P);
-set0(Key = [{_,_}], {struct, P}, Values) when is_list(P) ->
-    {struct, set0(Key, P, Values)};
-set0([Key = {K,_}], P, {struct, Values}) when is_list(P) ->
-    NewElement = {struct, lists:keystore(as_binary(K), 1, Values, composite_key_as_binary(Key))},
-    case length(matching_array_elements(Key, P)) of
-        0 -> [NewElement | P];
-        _ -> [case matching_element(Key, E) of
-                  true -> NewElement;
-                  false -> E
-              end || E <- P ]
+%% This matches if the user tries to write a non
+%% json-object to the match of an array filter
+set0([{_,_}], P, Object) when not is_tuple(Object) ->
+    erlang:error({replacing_object_with_value, {P, Object}});
+%% At this point we are dealing with array matching,
+%% in what appears not to be an array.
+%% It is likely to be a {struct, ARRAY}, where the
+%% ARRAY is the one we should match against.
+%% We end up in this scenario f.ex. if we are matching
+%% against arrays in the top level struct.
+set0(Key = [{_,_} | _], {struct, P}, Value) ->
+    set0(Key, P, Value);
+%% This is the step where arrays get filtered based
+%% on the filtering key.
+set0(_Key = [ Filter = {K,_} | Rest], P, Value) when is_list(P) ->
+    {Existed, Res} = lists:foldl(fun(E, {WhetherFound, Acc}) ->
+        case matching_element(Filter, E) of
+            true -> 
+                {struct, ChildElems} = set0(Rest, E, Value),
+                Child = {struct, lists:keystore(as_binary(K), 1, ChildElems, composite_key_as_binary(Filter))},
+                {true, [Child | Acc]};
+            false -> 
+                {WhetherFound, [E | Acc]}
+        end
+    end, {false, []}, P),
+    case Existed of
+        true ->
+            Res;
+        false ->
+            %% There was no match for the array element,
+            %% we better create it, so that child values
+            %% can be appended in the right subtree.
+            {struct, ChildElems} = set0(Rest, {struct, []}, Value),
+            Child = {struct, lists:keystore(K, 1, ChildElems, composite_key_as_binary(Filter))},
+            [Child | Res]
     end;
-set0([Key | Rest], P, Value) when is_list(P), is_tuple(Key) ->
-    [ case matching_element(Key, E) of
-        true -> set0(Rest, E, Value);
-        false -> E
-      end || E <- P ];
 set0([Idx | Rest], P, Value)
   when is_integer(Idx) orelse is_atom(Idx); is_list(P) ->
     case {get_value(Idx, P), length(Rest), Value} of
@@ -662,14 +687,31 @@ ej_test_() ->
                   {struct, [{<<"match">>, <<"me">>}]}
               ]},
               ComplexBeginning = {{"match", "me"}},
-              ?assertMatch([{struct, _}, {struct, _}], ej:get(ComplexBeginning, Data))
+              ?assertMatch([{struct, _}, {struct, _}], ej:get(ComplexBeginning, Data)),
+              ComplexBeginningDeeper = {{"match", "me"}, "match"},
+              ?assertMatch([<<"me">>, <<"me">>], ej:get(ComplexBeginningDeeper, Data))
             end},
 
-          {"ej:get value of nonexistant object after having used a complex query",
+          {"ej:get with multi-level array matching",
            fun() ->
-              Path1 = {"menu", "popup", "menuitem", {"value", "NonExistant"}, "param"},
-              ?assertEqual(undefined, ej:get(Path1, Menu))
+                %% When doing multilevel deep array matching, we want the
+                %% array returned to be a single top level list, and not
+                %% a nested list of lists ...
+                Data = {struct,[
+                   {<<"users">>, [
+                         {struct,[{<<"id">>,<<"sebastian">>},
+                                  {<<"books">>, [
+                                     {struct, [{<<"title">>, <<"faust">>},
+                                               {<<"rating">>, 5}]}
+                                  ]}
+                         ]}
+                   ]}
+                ]},
+                Path = {"users", {"id", "sebastian"}, "books", {"title", "faust"}, "rating"},
+                Result = ej:get(Path, Data),
+                ?assertEqual([5], Result)
             end},
+
 
           {"ej:set, replacing existing value",
            fun() ->
@@ -693,14 +735,15 @@ ej_test_() ->
                    ?assertEqual(Value, ej:get(Path, Widget1))
            end},
 
-          {"ej:set, missing intermediate path",
-           fun() ->
-                   Path = {"widget", "middle", "nOffset"},
-                   Value = <<"YYY">>,
-                   ?assertEqual(undefined, ej:get(Path, Widget)),
-                   ?assertException(error, {no_path, _},
-                                    ej:set(Path, Widget, Value))
-           end},
+          %% CHANGED FUNCTIONALIY: This no longer applies.
+          % {"ej:set, missing intermediate path",
+          %  fun() ->
+          %          Path = {"widget", "middle", "nOffset"},
+          %          Value = <<"YYY">>,
+          %          ?assertEqual(undefined, ej:get(Path, Widget)),
+          %          ?assertException(error, {no_path, _},
+          %                           ej:set(Path, Widget, Value))
+          %  end},
 
           {"ej:set top-level",
            fun() ->
@@ -771,12 +814,32 @@ ej_test_() ->
                    ?assertEqual(4, length(List))
            end},
 
+          {"ej:set creates intermediate missing nodes",
+           fun() ->
+                   StartData = {struct,[]},
+                   EndData = {struct,[{<<"a">>,
+                      {struct,[{<<"b">>,
+                          {struct, [{<<"c">>, <<"value">>}]}
+                      }]}
+                   }]},
+                   Path = {"a", "b", "c"},
+                   Result = ej:set(Path, StartData, <<"value">>),
+                   ?assertEqual(EndData, Result),
+                   ?assertEqual(<<"value">>, ej:get(Path, Result)),
+                   Path2 = {"1", "2"},
+                   Result2 = ej:set(Path2, Result, <<"other-value">>),
+                   ?assertEqual(<<"other-value">>, ej:get(Path2, Result2)),
+                   %% Does not affect existing values
+                   ?assertEqual(<<"value">>, ej:get(Path, Result2))
+           end},
+
+
           {"ej:set new value in an object at a complex path",
            fun() ->
                    Path = {"menu", "popup", "menuitem", {"value", "New"}, "alt"},
-                   Val = {struct, [{<<"text">>, <<"helptext">>}]},
+                   Val = <<"helptext">>,
                    Menu1 = ej:set(Path, Menu, Val),
-                   ?assertMatch([Val], ej:get(Path, Menu1))
+                   ?assertMatch([<<"helptext">>], ej:get(Path, Menu1))
            end},
 
           {"ej:set value in a non-existent object at a complex path",
@@ -790,7 +853,7 @@ ej_test_() ->
                    ?assertEqual([<<"Edit">>], ej:get(Path3, Menu1))
            end},
 
-          {"ej:set replace value in a object at a complex path",
+          {"ej:set new value in a object at a complex path",
            fun() ->
                    Path = {"menu", "popup", "menuitem", {"value", "New"}},
                    Path2 = {"menu", "popup", "menuitem", {"value", "New"}, "onclick"},
@@ -805,6 +868,10 @@ ej_test_() ->
 
           {"ej:set replace multiple children of a complex path",
            fun() ->
+                   %% We want the ability to affect multiple array elements
+                   %% when a complex selector returns more than one match.
+                   %% In this case all the selected array elements should be
+                   %% replaced.
                    StartData = {struct, [
                       {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 1}]},
                       {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 2}]}
@@ -812,12 +879,16 @@ ej_test_() ->
                    Path = {{"match", "me"}},
                    Path2 = {{"match", "me"}, "more"},
                    Val = {struct, [{<<"more">>, <<"content">>}]},
-                   EndData = ej:set(Path, StartData, Val),
-                   ?assertMatch([<<"content">>, <<"content">>], ej:get(Path2, EndData))
+                   Result = ej:set(Path, StartData, Val),
+                   ?assertMatch([<<"content">>, <<"content">>], ej:get(Path2, Result))
            end},
 
           {"ej:set replace multiple children deep in a complex path",
            fun() ->
+                   %% We want the ability to affect multiple array elements
+                   %% when a complex selector returns more than one match.
+                   %% In this case we show that the array does not have to
+                   %% be at the top level.
                    StartData = {struct, [{<<"parent">>, [
                           {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 1}]},
                           {struct, [{<<"match">>, <<"me">>}, {<<"param">>, 2}]}
@@ -828,6 +899,90 @@ ej_test_() ->
                    Val = {struct, [{<<"more">>, <<"content">>}]},
                    EndData = ej:set(Path, StartData, Val),
                    ?assertMatch([<<"content">>, <<"content">>], ej:get(Path2, EndData))
+           end},
+
+          {"ej:set should not allow replacing an array element at a complex path with a pure value",
+           fun() ->
+                   %% If the user has made a filtered selection on an array,
+                   %% then all the elements in the array are objects.
+                   %% Replacing the matched selection with a non-object value
+                   %% will break this constraint.
+                   Data = {struct, [{struct, [{<<"match">>, <<"me">>}]}]},
+                   Path = {{"match", "me"}},
+                   Val = <<"pure-value-and-not-a-struct">>,
+                   ?assertException(error, {replacing_object_with_value, _},
+                                      ej:set(Path, Data, Val))
+           end},
+
+          {"ej:set a value within array",
+           fun() ->
+                   %% We should be able to set values on elements we
+                   %% have filtered out of an array, rather than just
+                   %% replacing them.
+                   StartData = {struct,[
+                      {<<"users">>, [
+                            {struct,[{<<"id">>,<<"sebastian">>}]}
+                      ]}
+                   ]},
+                   EndData = {struct,[
+                      {<<"users">>, [
+                            {struct,[{<<"id">>,<<"sebastian">>},
+                                     {<<"books">>, []}
+                            ]}
+                      ]}
+                   ]},
+                   Path = {"users", {"id", "sebastian"}, "books"},
+                   Val = [],
+                   Result = ej:set(Path, StartData, Val),
+                   ?assertEqual(EndData, Result)
+           end},
+
+          {"ej:set should construct intermediate nodes if missing",
+           fun() ->
+                   %% If we request a composite path that doesn't exist,
+                   %% the missing nodes should be created for us dynamically
+                   %% to match the filtering criteria we are searching for.
+                   StartData = {struct,[]},
+                   Path = {"users", {"id", "seb"}, "room", {"room_id", "living-room"}, "books", {"title", "faust"}, "rating"},
+                   Val = 5,
+                   Result = ej:set(Path, StartData, Val),
+                   ?assertEqual([5], ej:get(Path, Result))
+           end},
+
+          {"ej:set should create intermediate nodes if missing in existing structures",
+           fun() ->
+                   %% If we request a composite path that doesn't exist,
+                   %% the missing nodes should be created for us dynamically
+                   %% to match the filtering criteria we are searching for.
+                   %% Furthermore, this should not affect old values already existing in the 
+                   %% same structure.
+                   StartData = {struct,[{<<"users">>,[
+                        {struct,[{<<"rooms">>,[
+                                    {struct,[{<<"books">>,[
+                                                {struct,[{<<"rating">>,5},{<<"title">>,<<"faust">>}]}
+                                          ]},{<<"room_id">>,<<"livingroom">>}
+                                    ]}
+                              ]},{<<"id">>,<<"seb">>}]
+                        }]
+                   }]},
+                   ValidPath = {"users", {"id", "seb"}, 
+                                "rooms", {"room_id", "livingroom"}, 
+                                "books", {"title", "faust"}, "rating"},
+                   ?assertEqual([5], ej:get(ValidPath, StartData)),
+                   NewPath = {"users", {"id", "seb"}, 
+                              "rooms", {"room_id", "bathroom"}, 
+                              "sink"},
+                   NewValue = true,
+                   Result = ej:set(NewPath, StartData, NewValue),
+                   ?assertEqual([true], ej:get(NewPath, Result)),
+                   OtherPath = {"users", {"id", "seb"}, "computers", {"laptop", true}, "name"},
+                   OtherValue = <<"paris">>,
+                   Result1 = ej:set(OtherPath, Result, OtherValue),
+                   io:format("~p", [Result1]),
+                   ?assertEqual([<<"paris">>], ej:get(OtherPath, Result1)),
+                   %% Old values still valid
+                   ?assertEqual([5], ej:get(ValidPath, Result1)),
+                   ?assertEqual([true], ej:get(NewPath, Result1))
            end},
 
           {"ej:remove",
