@@ -1,25 +1,25 @@
-ERL ?= erl
-APP := cheferl
+.PHONY: clean deps distclean doc dyalyzer test
 
-.PHONY: deps test doc
+# allow rebar binary to be set via environment variable
+REBAR ?= rebar
 
-all: deps
-	@./rebar compile
+all:
+	@$(REBAR) compile
 
 dialyzer: all
 	@dialyzer -Wunderspecs -r ebin
 
 test:
-	@./rebar eunit
+	@$(REBAR) eunit
 
 deps:
-	@./rebar get-deps
+	@$(REBAR) get-deps
 
 clean:
-	@./rebar clean
+	@$(REBAR) clean
 
 distclean: clean
-	@./rebar delete-deps
+	@$(REBAR) delete-deps
 
 doc:
-	@./rebar doc
+	@$(REBAR) doc
