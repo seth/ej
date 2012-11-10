@@ -1,10 +1,38 @@
 * ej helps you work with Erlang terms representing JSON
 
-The ej module is intended to make it easier to work with Erlang terms
-representing [[http://json.org][JSON]] as returned by [[https://github.com/mochi/mochiweb][mochijson2]].  You can use =ej:get/2=
-to walk an object and return a particular value, =ej:set/3= to update
-a value within an object, or =ej:delete/2= to remove a value an
-object.
+The ej module makes it easier to work with Erlang terms representing
+[[http://json.org][JSON]] in the format returned by [[https://github.com/davisp/jiffy][jiffy]], [[https://github.com/mochi/mochiweb][mochijson2]], or [[https://github.com/benoitc/ejson][ejson]].  You can use
+=ej:get/2= to walk an object and return a particular value, =ej:set/3=
+to update a value within an object, or =ej:delete/2= to remove a value
+from an object.
+
+In ej, paths into JSON objects are expressed using a tuple of keys
+like so:
+
+| Javascript              | ej                                         |
+| =Obj.author.name.first= | =ej:get({"author", "name", "first"}, Obj)= |
+
+To get started using ej, see [[ej by example]] below.
+
+ej also provides a means of validating a JSON object according to a
+specification you provide. This feature is useful if you need to
+process JSON request bodies. As a brief example, here's a
+specification for a JSON object describing a person and their favorite
+foods:
+
+#+BEGIN_SRC erlang
+{[
+  {<<"name">>, {string_match, regex_for(name)}},
+  {{opt, <<"nick_name">>}, {string_match, regex_for(name)}},
+  {<<"foods">>, {array_map, string}}
+ ]}
+#+END_SRC
+
+
+ej is independent of the library used for JSON serialization and
+has no dependencies.
+
+** ej by example
 
 ej is best explained by example.  Consider the following JSON data
 (borrowed from http://www.json.org/example.html):
@@ -45,7 +73,8 @@ ej is best explained by example.  Consider the following JSON data
 And here's ej in action:
 
 #+BEGIN_SRC txt
-% specify the path you want to access as a tuple of keys
+% specify the path you want to access as a tuple of keys (you can use
+% strings or binaries)
 4> ej:get({"menu", "value"}, Obj).
 <<"File">>
 
