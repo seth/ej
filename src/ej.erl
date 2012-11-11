@@ -85,9 +85,11 @@ get_value(Key, Obj) when is_list(Key) ->
     get_value(iolist_to_binary(Key), Obj);
 get_value(Key, {struct, L}) when is_binary(Key); is_tuple(Key) ->
     get_value(Key, L);
-get_value(Key, {L}) when is_binary(Key) -> % alt form
+get_value(Key, {L}) when is_binary(Key); is_tuple(Key) -> % alt form
     get_value(Key, L);
 get_value(Key, List=[{struct, _}|_T]) when is_binary(Key) ->
+    lists:flatten([get_value(Key, L) || L <- List]);
+get_value(Key, List=[{_}|_T]) when is_binary(Key) ->
     lists:flatten([get_value(Key, L) || L <- List]);
 get_value(Key, PL=[{_, _}|_T]) when is_binary(Key) ->
     proplists:get_value(Key, PL);
@@ -119,6 +121,12 @@ matching_array_elements(CompKey, List) ->
     lists:filter(fun(E) -> matching_element(CompKey, E) end, List).
 
 matching_element({K, V}, {struct, E}) ->
+    Value = as_binary(V),
+    case proplists:get_value(as_binary(K), E) of
+      Value -> true;
+      _ -> false
+    end;
+matching_element({K, V}, {E}) ->
     Value = as_binary(V),
     case proplists:get_value(as_binary(K), E) of
       Value -> true;
@@ -165,18 +173,21 @@ set0([Key | Rest], {struct, P}, Value, Options)
             {struct, lists:keydelete(Key, 1, P)};
         {Downstream, _, _, _} ->
             {struct, lists:keystore(Key, 1, P,
-                                    {Key, set0(Rest, Downstream, Value, Options)})}
+                                    {Key, set0(Rest, Downstream, Value, [{make_object, fun make_struct_object/1} |Options])})}
     end;
 set0([Key | Rest], {P}, Value, Options) % clean this up? alt form
   when is_binary(Key) orelse Key == 'EJ_DELETE' ->
-    case {get_value(Key, P), length(Rest), Value} of
-        {undefined, Len, _} when Len > 0 ->
-            erlang:error({no_path, Key});
-        {_, Len, 'EJ_DELETE'} when Len == 0 ->
-            {lists:keydelete(Key, 1, P)};
-        {Downstream, _, _} ->
+    case {get_value(Key, P), length(Rest), Value, proplists:get_value(create_missing, Options)} of
+        {undefined, _, _, true} ->
             {lists:keystore(Key, 1, P,
-                            {Key, set0(Rest, Downstream, Value, Options)})}
+                            {Key, set0(Rest, {[]}, Value, Options)})};
+        {undefined, Len, _, _} when Len > 0 ->
+            erlang:error({no_path, Key});
+        {_, Len, 'EJ_DELETE', _} when Len == 0 ->
+            {lists:keydelete(Key, 1, P)};
+        {Downstream, _, _, _} ->
+            {lists:keystore(Key, 1, P,
+                            {Key, set0(Rest, Downstream, Value, [{make_object, fun make_object/1} |Options])})}
     end;
 set0([new | []], P, Value, _Options) when is_list(P) ->
     [Value|P];
@@ -185,13 +196,16 @@ set0([Key = {_,_}], P, 'EJ_DELETE', _Options) when is_list(P) ->
 set0([{_,_}], P, Object, _Options) when not is_tuple(Object) ->
     erlang:error({replacing_object_with_value, {P, Object}});
 set0(Key = [{_,_} | _], {struct, P}, Value, Options) ->
-    set0(Key, P, Value, Options);
+    set0(Key, P, Value, [{make_object, fun make_struct_object/1} | Options]);
+set0(Key = [{_,_} | _], {P}, Value, Options) ->
+    set0(Key, P, Value, [{make_object, fun make_object/1} | Options]);
 set0([ Filter = {K,_} | Rest], P, Value, Options) when is_list(P) ->
+    MakeObject = proplists:get_value(make_object, Options),
     {Existed, Res} = lists:foldl(fun(E, {WhetherFound, Acc}) ->
         case matching_element(Filter, E) of
             true -> 
-                {struct, ChildElems} = set0(Rest, E, Value, Options),
-                Child = {struct, lists:keystore(as_binary(K), 1, ChildElems, composite_key_as_binary(Filter))},
+                ChildElems = object_list(set0(Rest, E, Value, Options)),
+                Child = MakeObject(lists:keystore(as_binary(K), 1, ChildElems, composite_key_as_binary(Filter))),
                 {true, [Child | Acc]};
             false -> 
                 {WhetherFound, [E | Acc]}
@@ -201,9 +215,9 @@ set0([ Filter = {K,_} | Rest], P, Value, Options) when is_list(P) ->
         {true, _} ->
             Res;
         {false, true} ->
-            {struct, ChildElems} = set0(Rest, {struct, []}, Value, Options),
-            Child = {struct, lists:keystore(K, 1, ChildElems, composite_key_as_binary(Filter))},
-            [Child | Res];
+            ChildElems = object_list(set0(Rest, MakeObject([]), Value, Options)),
+            Child = lists:keystore(K, 1, ChildElems, composite_key_as_binary(Filter)),
+            [MakeObject(Child) | Res];
         {false, _} ->
             erlang:error({no_path, Filter})
     end;
@@ -217,6 +231,17 @@ set0([Idx | Rest], P, Value, Options)
         {Downstream, _, _} ->
             set_nth(Idx, P, set0(Rest, Downstream, Value, Options))
 end.
+
+object_list({struct, L}) ->
+    L;
+object_list({L}) ->
+    L.
+
+make_object(L) ->
+    {L}.
+
+make_struct_object(L) ->
+    {struct, L}.
 
 composite_key_as_binary({K, V}) -> {as_binary(K), as_binary(V)}.
 
