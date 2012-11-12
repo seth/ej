@@ -50,21 +50,21 @@ ej_alt_test_() ->
 
           {"ej:get from array by matching key",
            fun() ->
-              Path1 = {"menu", "popup", "menuitem", {"value", "New"}},
+              Path1 = {"menu", "popup", "menuitem", {select, {"value", "New"}}},
               ?assertMatch([{[{<<"value">>,<<"New">>}|_]}], ej:get(Path1, Menu)),
-              Path2 = {"menu", "popup", "menuitem", {"value", "New"}, "onclick"},
+              Path2 = {"menu", "popup", "menuitem", {select, {"value", "New"}}, "onclick"},
               ?assertEqual([<<"CreateNewDoc()">>], ej:get(Path2, Menu)),
-              PathNoneMatched = {"menu", "popup", "menuitem", {"value", "NotThere"}},
+              PathNoneMatched = {"menu", "popup", "menuitem", {select, {"value", "NotThere"}}},
               ?assertEqual([], ej:get(PathNoneMatched, Menu)),
-              PathDoesntExist = {"menu", "popup", "menuitem", {"value", "NotThere"}, "bar"},
+              PathDoesntExist = {"menu", "popup", "menuitem", {select, {"value", "NotThere"}}, "bar"},
               ?assertEqual(undefined, ej:get(PathDoesntExist, Menu)),
               Data = {[
                        {[{<<"match">>, <<"me">>}]},
                        {[{<<"match">>, <<"me">>}]}
                       ]},
-              ComplexBeginning = {{"match", "me"}},
+              ComplexBeginning = {{select, {"match", "me"}}},
               ?assertMatch([{_}, {_}], ej:get(ComplexBeginning, Data)),
-              ComplexBeginningDeeper = {{"match", "me"}, "match"},
+              ComplexBeginningDeeper = {{select, {"match", "me"}}, "match"},
               ?assertMatch([<<"me">>, <<"me">>], ej:get(ComplexBeginningDeeper, Data))
             end},
           {"ej:get with multi-level array matching",
@@ -82,7 +82,8 @@ ej_alt_test_() ->
                          ]}
                    ]}
                 ]},
-                Path = {"users", {"id", "sebastian"}, "books", {"title", "faust"}, "rating"},
+                Path = {"users", {select, {"id", "sebastian"}}, "books",
+                        {select, {"title", "faust"}}, "rating"},
                 Result = ej:get(Path, Data),
                 ?assertEqual([5], Result)
             end},
@@ -107,16 +108,19 @@ ej_alt_test_() ->
            end},
           {"ej:set new value in an object at a complex path",
            fun() ->
-                   Path = {"menu", "popup", "menuitem", {"value", "New"}, "alt"},
+                   Path = {"menu", "popup", "menuitem", {select, {"value", "New"}}, "alt"},
                    Val = <<"helptext">>,
                    Menu1 = ej:set(Path, Menu, Val),
                    ?assertMatch([<<"helptext">>], ej:get(Path, Menu1))
            end},
           {"ej:set_p value in a non-existent object at a complex path",
            fun() ->
-                   Path = {"menu", "popup", "menuitem", {"value", "Edit"}},
-                   Path2 = {"menu", "popup", "menuitem", {"value", "Edit"}, "text"},
-                   Path3 = {"menu", "popup", "menuitem", {"value", "Edit"}, "value"},
+                   Path = {"menu", "popup", "menuitem",
+                           {select, {"value", "Edit"}}},
+                   Path2 = {"menu", "popup", "menuitem",
+                            {select, {"value", "Edit"}}, "text"},
+                   Path3 = {"menu", "popup", "menuitem",
+                            {select, {"value", "Edit"}}, "value"},
                    Val = { [{<<"text">>, <<"helptext">>}]},
                    Menu1 = ej:set_p(Path, Menu, Val),
                    ?assertMatch([<<"helptext">>], ej:get(Path2, Menu1)),
@@ -125,12 +129,15 @@ ej_alt_test_() ->
 
           {"ej:set new value in a object at a complex path",
            fun() ->
-                   Path = {"menu", "popup", "menuitem", {"value", "New"}},
-                   Path2 = {"menu", "popup", "menuitem", {"value", "New"}, "onclick"},
+                   Path = {"menu", "popup", "menuitem",
+                           {select, {"value", "New"}}},
+                   Path2 = {"menu", "popup", "menuitem",
+                            {select, {"value", "New"}}, "onclick"},
                    Val = { [{<<"onclick">>, <<"CreateDifferentNewDoct()">>}]},
                    Menu1 = ej:set(Path, Menu, Val),
                    ?assertEqual([<<"CreateDifferentNewDoct()">>], ej:get(Path2, Menu1)),
-                   Path3 = {"menu", "popup", "menuitem", {"value", "New"}, "speed"},
+                   Path3 = {"menu", "popup", "menuitem",
+                            {select, {"value", "New"}}, "speed"},
                    ValHigh = <<"high">>,
                    Menu2 = ej:set(Path3, Menu1, ValHigh),
                    ?assertEqual([ValHigh], ej:get(Path3, Menu2))
@@ -146,8 +153,8 @@ ej_alt_test_() ->
                       { [{<<"match">>, <<"me">>}, {<<"param">>, 1}]},
                       { [{<<"match">>, <<"me">>}, {<<"param">>, 2}]}
                    ]},
-                   Path = {{"match", "me"}},
-                   Path2 = {{"match", "me"}, "more"},
+                   Path = {{select, {"match", "me"}}},
+                   Path2 = {{select, {"match", "me"}}, "more"},
                    Val = { [{<<"more">>, <<"content">>}]},
                    Result = ej:set(Path, StartData, Val),
                    ?assertMatch([<<"content">>, <<"content">>], ej:get(Path2, Result))
@@ -164,8 +171,8 @@ ej_alt_test_() ->
                           { [{<<"match">>, <<"me">>}, {<<"param">>, 2}]}
                           ]}
                    ]},
-                   Path = {"parent", {"match", "me"}},
-                   Path2 = {"parent", {"match", "me"}, "more"},
+                   Path = {"parent", {select, {"match", "me"}}},
+                   Path2 = {"parent", {select, {"match", "me"}}, "more"},
                    Val = { [{<<"more">>, <<"content">>}]},
                    EndData = ej:set(Path, StartData, Val),
                    ?assertMatch([<<"content">>, <<"content">>], ej:get(Path2, EndData))
