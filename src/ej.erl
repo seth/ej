@@ -213,11 +213,11 @@ set0([ Filter = {K,_} | Rest], P, Value, Options) when is_list(P) ->
     end, {false, []}, P),
     case {Existed, proplists:get_value(create_missing, Options)} of
         {true, _} ->
-            Res;
+            lists:reverse(Res);
         {false, true} ->
             ChildElems = object_list(set0(Rest, MakeObject([]), Value, Options)),
             Child = lists:keystore(K, 1, ChildElems, composite_key_as_binary(Filter)),
-            [MakeObject(Child) | Res];
+            [MakeObject(Child) | lists:reverse(Res)];
         {false, _} ->
             erlang:error({no_path, Filter})
     end;
@@ -927,6 +927,21 @@ ej_test_() ->
                    Val = {struct, [{<<"more">>, <<"content">>}]},
                    EndData = ej:set(Path, StartData, Val),
                    ?assertMatch([<<"content">>, <<"content">>], ej:get(Path2, EndData))
+           end},
+
+          {"ej:set doesn't alter order when setting a complex path",
+           fun() ->
+                   StartData = {struct, [{<<"parent">>, [
+                          {struct, [{<<"name">>, <<"alice">>}, {<<"param">>, 1}]},
+                          {struct, [{<<"name">>, <<"bob">>}, {<<"param">>, 2}]},
+                          {struct, [{<<"name">>, <<"clara">>}, {<<"param">>, 3}]}
+                          ]}
+                   ]},
+                   Path = {"parent", {filter, {"name", "bob"}}, "param"},
+                   EndData = ej:set(Path, StartData, 4),
+                   Names = [ ej:get({"name"}, Elt) || Elt <- ej:get({"parent"}, EndData) ],
+                   ExpectNames = [<<"alice">>, <<"bob">>, <<"clara">>],
+                   ?assertEqual(ExpectNames, Names)
            end},
 
           {"ej:set should not allow replacing an array element at a complex path with a pure value",
