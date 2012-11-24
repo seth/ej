@@ -86,6 +86,10 @@ And here's ej in action:
 > ej:get({"menu", "popup", "menuitem", first, "value"}, Obj).  
 <<"New">>
 
+% you can filter a list of objects by specifying a property (key/value
+% pair) to match on:
+ej:get({"menu", "popup", "menuitem", {select, {"value", "New"}}}, Obj).
+
 % set a value
 Obj2 = ej:set({"menu", "id"}, Obj, <<"abc123">>).
 
@@ -109,6 +113,7 @@ the folks at BeeBole.
 - Christopher Brown
 - Christopher Maier
 - John Keiser
+- Sebastian Probst Eide
 
 ** Build status
 
