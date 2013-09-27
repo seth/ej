@@ -26,6 +26,7 @@
 -module(ej).
 -author('Seth Falcon <seth@userprimary.net').
 -export([
+         dedup/1,
          get/2,
          get/3,
          set/3,
@@ -636,6 +637,31 @@ join_bins([B|Rest], Sep, Acc) ->
 
 
 %% end valid
+
+%% @doc Recursively remove all but the first occurance of duplicated
+%% keys in EJSON objects. According to
+%% [http://www.ietf.org/rfc/rfc4627.txt] JSON objects SHOULD have
+%% unique keys, but it is not a hard requirement. Some parsers fail
+%% when encountering duplicate keys.
+%%
+%% The spec for `dedup' should be `-spec dedup(json_term()) ->
+%% json_term().', but dialyzer with `-Wunderspecs' warns on this I
+%% think because it exceeds the depth that dialyzer can look.
+dedup(Val) when is_binary(Val);
+                is_integer(Val);
+                is_float(Val);
+                Val == null;
+                Val == true;
+                Val == false->
+    Val;
+dedup({L}) when is_list(L) ->
+    {[ {Key, dedup(Val)} || {Key, Val} <- lists:ukeysort(1, L) ]};
+dedup({struct, L}) when is_list(L) ->
+    {struct, [ {Key, dedup(Val)} || {Key, Val} <- lists:ukeysort(1, L) ]};
+dedup(L) when is_list(L) ->
+    [ dedup(Elt) || Elt <- L ].
+
+
 -ifdef(TEST).
 
 ej_test_() ->
