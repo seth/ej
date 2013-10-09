@@ -338,7 +338,11 @@ delete(Keys, Obj) when is_tuple(Keys) ->
 %% API and definition of specs is subject to change.
 valid({object_map, _}=Spec, Obj={OL}) when is_list(OL) ->
     check_value_spec(<<"no_key">>, Spec, Obj, #spec_ctx{});
+valid({object_map, _}=Spec, Obj={struct, OL}) when is_list(OL) ->
+    check_value_spec(<<"no_key">>, Spec, Obj, #spec_ctx{});
 valid({L}, Obj={OL}) when is_list(L) andalso is_list(OL) ->
+    valid(L, Obj, #spec_ctx{});
+valid({L}, Obj={struct, OL}) when is_list(L) andalso is_list(OL) ->
     valid(L, Obj, #spec_ctx{});
 valid({L}, Obj) when is_list(L) ->
     #ej_invalid{type = json_type, key = undefined,
@@ -397,6 +401,8 @@ type_from_spec(Literal) when is_integer(Literal) orelse is_float(Literal) ->
     number;
 type_from_spec({L}) when is_list(L) ->
     object;
+type_from_spec({struct, L}) when is_list(L) ->
+    object;
 type_from_spec({any_of, {Specs, _ErrorMsg}}) ->
     type_from_any_of(Specs);
 type_from_spec(Type) when Type =:= string;
@@ -435,6 +441,8 @@ json_type(Val) when is_binary(Val) ->
     string;
 json_type({L}) when is_list(L) ->
     object;
+json_type({struct, L}) when is_list(L) ->
+    object;
 json_type(L) when is_list(L) ->
     array;
 json_type(null) ->
@@ -444,11 +452,13 @@ json_type(Bool) when Bool =:= true; Bool =:= false ->
 json_type(N) when is_integer(N) orelse is_float(N) ->
     number.
 
+%% traverse nested spec here
 check_value_spec(Key, {L}, Val={V}, #spec_ctx{path = Path} = Ctx) when is_list(L) andalso is_list(V) ->
-    %% traverse nested spec here
     valid(L, Val, Ctx#spec_ctx{path = [Key|Path]});
+check_value_spec(Key, {L}, Val={struct, V}, #spec_ctx{path = Path} = Ctx) when is_list(L) andalso is_list(V) ->
+    valid(L, Val, Ctx#spec_ctx{path = [Key|Path]});
+%% was expecting nested spec, found non-object
 check_value_spec(Key, {L}, Val, #spec_ctx{path = Path}) when is_list(L) ->
-    %% was expecting nested spec, found non-object
     #ej_invalid{type = json_type, key = make_key(Key, Path),
                 expected_type = object,
                 found = Val,
@@ -509,6 +519,8 @@ check_value_spec(Key, {array_map, _ItemSpec}, Val, #spec_ctx{path = Path}) ->
                 found_type = json_type(Val),
                 found = Val};
 
+check_value_spec(Key, OM={object_map, _}, {struct, L}, Ctx) when is_list(L) ->
+    check_value_spec(Key, OM, {L}, Ctx);
 check_value_spec(Key, {object_map, {{keys, KeySpec}, {values, ValSpec}}},
                  Val={L}, #spec_ctx{path = Path}) when is_list(L) ->
     case do_object_map(KeySpec, ValSpec, Val) of
@@ -537,6 +549,8 @@ check_value_spec(Key, string, Val, #spec_ctx{path = Path}) ->
     invalid_for_type(string, Val, Key, Path);
 
 check_value_spec(_Key, object, {VL}, _Ctx) when is_list(VL) ->
+    ok;
+check_value_spec(_Key, object, {struct, VL}, _Ctx) when is_list(VL) ->
     ok;
 check_value_spec(Key, object, Val, #spec_ctx{path = Path}) ->
     invalid_for_type(object, Val, Key, Path);
@@ -595,6 +609,8 @@ do_array_map(ItemSpec, [Item|Rest]) ->
             {bad_item, Error}
     end.
 
+do_object_map(KeySpec, ValSpec, {struct, L}) when is_list(L) ->
+    do_object_map(KeySpec, ValSpec, L);
 do_object_map(KeySpec, ValSpec, {L}) when is_list(L) ->
     do_object_map(KeySpec, ValSpec, L);
 do_object_map(_KeySpec, _ValSpec, []) ->
