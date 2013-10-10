@@ -401,8 +401,6 @@ type_from_spec(Literal) when is_integer(Literal) orelse is_float(Literal) ->
     number;
 type_from_spec({L}) when is_list(L) ->
     object;
-type_from_spec({struct, L}) when is_list(L) ->
-    object;
 type_from_spec({any_of, {Specs, _ErrorMsg}}) ->
     type_from_any_of(Specs);
 type_from_spec(Type) when Type =:= string;
@@ -609,8 +607,6 @@ do_array_map(ItemSpec, [Item|Rest]) ->
             {bad_item, Error}
     end.
 
-do_object_map(KeySpec, ValSpec, {struct, L}) when is_list(L) ->
-    do_object_map(KeySpec, ValSpec, L);
 do_object_map(KeySpec, ValSpec, {L}) when is_list(L) ->
     do_object_map(KeySpec, ValSpec, L);
 do_object_map(_KeySpec, _ValSpec, []) ->
