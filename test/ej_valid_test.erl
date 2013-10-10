@@ -36,7 +36,10 @@ basic_spec_0_test_() ->
                                key = <<"description">>},
                    ej:valid(Spec,
                               basic_with(<<"fred">>,
-                                        [{<<"description">>, {[]}}])))].
+                                        [{<<"description">>, {[]}}]))),
+
+     ?_assertMatch(#ej_invalid{}, ej:valid({[{<<"a">>, 12}]}, basic(<<"a">>)))
+    ].
 
 non_hash_fails_with(Val, ActualType) ->
     ?_assertEqual(#ej_invalid{type = json_type,
@@ -375,6 +378,52 @@ value_spec_as_spec_test_() ->
      ?_assertEqual(ok, ej:valid(Spec, EmptyArray)),
      ?_assertMatch(#ej_invalid{}, ej:valid(Spec, NotArray)),
      ?_assertMatch(#ej_invalid{}, ej:valid(Spec, WrongArrayType))
+    ].
+
+struct_object_map_test_() ->
+    Spec = {object_map, {{keys, string},
+                         {values, {array_map, string}}}},
+    Good = {struct, [{<<"a">>, [<<"b">>]}]},
+    Empty = {struct, []},
+    EmptyArray = {struct, [{<<"a">>, []}]},
+    NotArray = {struct, [{<<"a">>, <<"bad">>}]},
+    WrongArrayType = {struct, [{<<"a">>, [1, 2]}]},
+    [
+     ?_assertEqual(ok, ej:valid(Spec, Good)),
+     ?_assertEqual(ok, ej:valid(Spec, Empty)),
+     ?_assertEqual(ok, ej:valid(Spec, EmptyArray)),
+     ?_assertMatch(#ej_invalid{}, ej:valid(Spec, NotArray)),
+     ?_assertMatch(#ej_invalid{}, ej:valid(Spec, WrongArrayType))
+    ].
+
+basic_struct_object_test_() ->
+    Spec = {[{<<"key1">>, string}]},
+    Obj1 = {struct, [{<<"key1">>, <<"value1">>}]},
+    Obj2 = {struct, [{<<"key1">>, {struct, [{<<"b">>, <<"value1">>}]}}]},
+    [
+     ?_assertEqual(ok, ej:valid(Spec, Obj1)),
+     ?_assertMatch(#ej_invalid{}, ej:valid(Spec, Obj2)),
+     ?_assertMatch(ok, ej:valid({[{<<"key1">>, object}]}, Obj2))
+    ].
+
+deep_struct_object_test_() ->
+    A3 = {[{<<"a3">>, string}]},
+    A2 = {[{<<"a2">>, A3}]},
+    Spec = {[{<<"a1">>, A2}]},
+
+    ObjOk = {struct,
+             [{<<"a1">>,
+               {struct, [{<<"a2">>,
+                          {struct, [{<<"a3">>, <<"v">>}]}}]}
+              }]},
+    ObjNotOk = {struct,
+                [{<<"a1">>,
+                  {struct, [{<<"a2">>,
+                             {struct, [{<<"a3">>, null}]}}]}
+                 }]},
+    [
+     ?_assertEqual(ok, ej:valid(Spec, ObjOk)),
+     ?_assertMatch(#ej_invalid{}, ej:valid(Spec, ObjNotOk))
     ].
 
 basic(Name) ->
