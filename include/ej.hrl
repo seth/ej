@@ -33,11 +33,18 @@
 -type json_term()    :: json_string() | json_number() | json_array() |
                         json_object() | json_null() | json_boolean().
 
--type key_type()    :: binary() | integer() | first | last | new.
-%% TODO: Tuple of arbitrary length can't be typed; consider list which
-%% can. Downside of list is confusion with strings.
--type key_tuple()   :: tuple(). %{key_type()}.
--type key_list()    :: list().
+-type ej_array_select() :: {select, all | {json_string(),
+                                           json_string()  |
+                                           json_number()  |
+                                           json_boolean() |
+                                           json_null()}}.
+
+-type key_type()    :: binary() | integer() | first | last | new |
+                       ej_array_select().
+
+-type key_tuple()   :: tuple().
+-type key_list()    :: [key_type()].
+-type ej_key_path() :: key_tuple() | key_list().
 
 -type ej_spec_type() :: any_of        |
                         any_type      |

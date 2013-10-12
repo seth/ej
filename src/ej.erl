@@ -54,7 +54,7 @@
 %% atoms `` 'first' '' and `` 'last' '' can be used to access the
 %% first and last elements of a list, respectively.
 %%
--spec(get(key_tuple() | key_list(), json_object() | json_plist()) -> json_term() | undefined).
+-spec get(ej_key_path(), json_object() | json_plist()) -> json_term() | undefined.
 
 get({}, _Obj) ->
     undefined;
@@ -64,7 +64,7 @@ get(Keys, Obj) when is_list(Keys) ->
     get0(Keys, Obj).
 
 %% @doc same as get/2, but returns `Default' if the specified value was not found.
--spec get(key_tuple() | key_list(), json_object() | json_plist(), json_term()) -> json_term().
+-spec get(ej_key_path(), json_object() | json_plist(), json_term()) -> json_term().
 get({}, _Obj, Default)  ->
     Default;
 get(Keys, Obj, Default) when is_tuple(Keys) orelse is_list(Keys) ->
@@ -157,7 +157,7 @@ matching_element(Key, E) ->
 %% returns the new structure.  If `Value' is the atom `EJ_DELETE',
 %% then the path specified by `Keys' is removed (but see `delete/2').
 %%
--spec(set(key_tuple(), json_object(), json_term()) -> json_term()).
+-spec set(ej_key_path(), json_object(), json_term()) -> json_term().
 set(Keys, Obj, Value) when is_tuple(Keys) ->
     set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value, []);
 set(Keys, Obj, Value) when is_list(Keys) ->
@@ -172,7 +172,7 @@ set(Keys, Obj, Value) when is_list(Keys) ->
 %%
 %% The arguments are the same as for `set'.
 %%
--spec(set_p(key_tuple(), json_object(), json_term()) -> json_term()).
+-spec set_p(ej_key_path(), json_object(), json_term()) -> json_term().
 set_p(Keys, Obj, Value) when is_tuple(Keys) ->
     set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value, [create_missing]);
 set_p(Keys, Obj, Value) when is_list(Keys) ->
@@ -291,8 +291,7 @@ set_nth(N, L, V) ->
 % elements to a list.
 
 %% @doc Remove the item specified by `Keys'.
--spec(delete(key_tuple(), json_object()) -> json_object()).
-
+-spec delete(ej_key_path(), json_object()) -> json_object().
 delete(Keys, Obj) when is_tuple(Keys) ->
     set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, 'EJ_DELETE', []);
 delete(Keys, Obj) when is_list(Keys) ->
