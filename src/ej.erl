@@ -101,7 +101,10 @@ get_value(Key, {from_select, []}) when is_binary(Key) ->
 get_value(Key, {from_select, List}) when is_binary(Key) ->
     lists:flatten([get_value(Key, L) || L <- List]);
 get_value(Key, PL=[{_, _}|_T]) when is_binary(Key) ->
-    proplists:get_value(Key, PL);
+    case lists:keyfind(Key, 1, PL) of
+        false -> undefined;
+        {_, Return} -> Return
+    end;
 get_value(Key, [_H|_T]) when is_binary(Key) ->
     undefined;
 get_value(Key, []) when is_binary(Key) ->
@@ -133,15 +136,17 @@ matching_array_elements(CompKey, List) ->
 
 matching_element({K, V}, {struct, E}) ->
     Value = as_binary(V),
-    case proplists:get_value(as_binary(K), E) of
-      Value -> true;
-      _ -> false
+    case lists:keyfind(as_binary(K), 1, E) of
+      false      -> false;
+      {_, Value} -> true;
+      _          -> false
     end;
 matching_element({K, V}, {E}) ->
     Value = as_binary(V),
-    case proplists:get_value(as_binary(K), E) of
-      Value -> true;
-      _ -> false
+    case lists:keyfind(as_binary(K), 1, E) of
+      false      -> false;
+      {_, Value} -> true;
+      _          -> false
     end;
 matching_element(Key, E) ->
     erlang:error({error_matching_element, {Key, E}}).
@@ -215,7 +220,12 @@ set0(Key = [{select, {_,_}} | _], {struct, P}, Value, Options) ->
 set0(Key = [{select, {_,_}} | _], {P}, Value, Options) ->
     set0(Key, P, Value, [{make_object, fun make_object/1} | Options]);
 set0([ {select, Filter = {K,_}} | Rest], P, Value, Options) when is_list(P) ->
-    MakeObject = proplists:get_value(make_object, Options),
+    MakeObject = 
+        case lists:keyfind(make_object, 1, Options) of
+            false               -> undefined;
+            {_, MakeObject_Tmp} -> MakeObject_Tmp;
+            _                   -> undefined
+        end,
     {Existed, Res} = lists:foldl(fun(E, {WhetherFound, Acc}) ->
         case matching_element(Filter, E) of
             true -> 
