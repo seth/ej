@@ -54,18 +54,20 @@
 %% atoms `` 'first' '' and `` 'last' '' can be used to access the
 %% first and last elements of a list, respectively.
 %%
--spec(get(key_tuple(), json_object() | json_plist()) -> json_term() | undefined).
+-spec(get(key_tuple() | key_list(), json_object() | json_plist()) -> json_term() | undefined).
 
 get({}, _Obj) ->
     undefined;
 get(Keys, Obj) when is_tuple(Keys) ->
-   get0(tuple_to_list(Keys), Obj).
+    get0(tuple_to_list(Keys), Obj);
+get(Keys, Obj) when is_list(Keys) ->
+    get0(Keys, Obj).
 
 %% @doc same as get/2, but returns `Default' if the specified value was not found.
--spec get(key_tuple(), json_object() | json_plist(), json_term()) -> json_term().
+-spec get(key_tuple() | key_list(), json_object() | json_plist(), json_term()) -> json_term().
 get({}, _Obj, Default)  ->
     Default;
-get(Keys, Obj, Default) when is_tuple(Keys) ->
+get(Keys, Obj, Default) when is_tuple(Keys) orelse is_list(Keys) ->
     case get(Keys, Obj) of
         undefined ->
             Default;
@@ -152,7 +154,9 @@ matching_element(Key, E) ->
 %%
 -spec(set(key_tuple(), json_object(), json_term()) -> json_term()).
 set(Keys, Obj, Value) when is_tuple(Keys) ->
-    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value, []).
+    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value, []);
+set(Keys, Obj, Value) when is_list(Keys) ->
+    set0([ as_binary(X) || X <- Keys ], Obj, Value, []).
 
 %% @doc Set a value in `Obj' and create missing intermediate
 %%      nodes if need be.
@@ -165,7 +169,9 @@ set(Keys, Obj, Value) when is_tuple(Keys) ->
 %%
 -spec(set_p(key_tuple(), json_object(), json_term()) -> json_term()).
 set_p(Keys, Obj, Value) when is_tuple(Keys) ->
-    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value, [create_missing]).
+    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, Value, [create_missing]);
+set_p(Keys, Obj, Value) when is_list(Keys) ->
+    set0([ as_binary(X) || X <- Keys ], Obj, Value, [create_missing]).
 
 set0([], _, Value, _) ->
     Value;
@@ -279,7 +285,9 @@ set_nth(N, L, V) ->
 -spec(delete(key_tuple(), json_object()) -> json_object()).
 
 delete(Keys, Obj) when is_tuple(Keys) ->
-    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, 'EJ_DELETE', []).
+    set0([ as_binary(X) || X <- tuple_to_list(Keys) ], Obj, 'EJ_DELETE', []);
+delete(Keys, Obj) when is_list(Keys) ->
+    set0([ as_binary(X) || X <- Keys ], Obj, 'EJ_DELETE', []).
 
 %% valid - JSON term validation via spec
 
@@ -691,13 +699,27 @@ ej_test_() ->
          [{"ej:get",
            [
             ?_assertMatch({struct, [{_, _}|_]}, ej:get({"widget"}, Widget)),
+            ?_assertMatch({struct, [{_, _}|_]}, ej:get(["widget"], Widget)),
+
             ?_assertEqual(<<"1">>, ej:get({"widget", "version"}, Widget)),
+            ?_assertEqual(<<"1">>, ej:get(["widget", "version"], Widget)),
+
             ?_assertEqual(250, ej:get({"widget", "image", "hOffset"}, Widget)),
+            ?_assertEqual(250, ej:get(["widget", "image", "hOffset"], Widget)),
+
             ?_assertEqual([1,2,3,4,5], ej:get({"widget", "values"}, Widget)),
+            ?_assertEqual([1,2,3,4,5], ej:get(["widget", "values"], Widget)),
+
             ?_assertEqual(2, ej:get({"widget", "values", 2}, Widget)),
             ?_assertEqual(4, ej:get({"widget", "values", 4}, Widget)),
             ?_assertEqual(1, ej:get({"widget", "values", first}, Widget)),
             ?_assertEqual(5, ej:get({"widget", "values", last}, Widget)),
+
+            ?_assertEqual(2, ej:get(["widget", "values", 2], Widget)),
+            ?_assertEqual(4, ej:get(["widget", "values", 4], Widget)),
+            ?_assertEqual(1, ej:get(["widget", "values", first], Widget)),
+            ?_assertEqual(5, ej:get(["widget", "values", last], Widget)),
+
             ?_assertEqual({struct, [{<<"id">>, 5}]},
                           ej:get({<<"objects">>, last}, ObjList)),
             ?_assertEqual({struct, [{<<"id">>, 1}]},
@@ -801,9 +823,22 @@ ej_test_() ->
                                 ej:get({"users", {select, all}, "company"}, Data))
            end},
 
-          {"ej:set, replacing existing value",
+          {"ej:set, replacing existing value, keys is tuple",
            fun() ->
                    Path = {"widget", "window", "name"},
+                   CurrentValue = ej:get(Path, Widget),
+                   NewValue = <<"bob">>,
+                   ?assert(NewValue /= CurrentValue),
+                   Widget1 = ej:set(Path, Widget, NewValue),
+                   ?assertEqual(NewValue, ej:get(Path, Widget1)),
+                   % make sure the structure hasn't been disturbed
+                   Widget2 = ej:set(Path, Widget1, <<"main_window">>),
+                   ?assertEqual(Widget, Widget2)
+           end},
+
+          {"ej:set replacing existing value, keys is lists",
+           fun() ->
+                   Path = ["widget", "window", "name"],
                    CurrentValue = ej:get(Path, Widget),
                    NewValue = <<"bob">>,
                    ?assert(NewValue /= CurrentValue),
@@ -901,7 +936,7 @@ ej_test_() ->
                    ?assertEqual(4, length(List))
            end},
 
-          {"ej:set_p creates intermediate missing nodes",
+          {"ej:set_p creates intermediate missing nodes， keys is tuple",
            fun() ->
                    StartData = {struct,[]},
                    EndData = {struct,[{<<"a">>,
@@ -910,6 +945,25 @@ ej_test_() ->
                       }]}
                    }]},
                    Path = {"a", "b", "c"},
+                   Result = ej:set_p(Path, StartData, <<"value">>),
+                   ?assertEqual(EndData, Result),
+                   ?assertEqual(<<"value">>, ej:get(Path, Result)),
+                   Path2 = {"1", "2"},
+                   Result2 = ej:set_p(Path2, Result, <<"other-value">>),
+                   ?assertEqual(<<"other-value">>, ej:get(Path2, Result2)),
+                   %% Does not affect existing values
+                   ?assertEqual(<<"value">>, ej:get(Path, Result2))
+           end},
+
+           {"ej:set_p creates intermediate missing nodes， keys is lists",
+           fun() ->
+                   StartData = {struct,[]},
+                   EndData = {struct,[{<<"a">>,
+                      {struct,[{<<"b">>,
+                          {struct, [{<<"c">>, <<"value">>}]}
+                      }]}
+                   }]},
+                   Path = ["a", "b", "c"],
                    Result = ej:set_p(Path, StartData, <<"value">>),
                    ?assertEqual(EndData, Result),
                    ?assertEqual(<<"value">>, ej:get(Path, Result)),
@@ -1132,7 +1186,7 @@ ej_test_() ->
                    ?assertEqual([<<"CloseDoc()">>], ej:get(VerifyClose, Menu1))
            end},
 
-          {"ej:remove object at complex path",
+          {"ej:remove object at complex path, keys is tuple",
            fun() ->
                    Path = {"menu", "popup", "menuitem", {select, {"value", "New"}}},
                    Orig = ej:get(Path, Menu),
@@ -1146,6 +1200,23 @@ ej_test_() ->
                    VerifyOpen = {"menu", "popup", "menuitem", {select, {"value", "Open"}}, "onclick"},
                    ?assertEqual([<<"OpenDoc()">>], ej:get(VerifyOpen, Menu1)),
                    VerifyClose = {"menu", "popup", "menuitem", {select, {"value", "Close"}}, "onclick"},
+                   ?assertEqual([<<"CloseDoc()">>], ej:get(VerifyClose, Menu1))
+           end},
+
+           {"ej:remove object at complex path, keys is list",
+           fun() ->
+                   Path = ["menu", "popup", "menuitem", {select, {"value", "New"}}],
+                   Orig = ej:get(Path, Menu),
+                   ?assert([] /= Orig),
+                   Menu1 = ej:delete(Path, Menu),
+                   ?assertEqual([], ej:get(Path, Menu1)),
+                   % verify some structure
+                   VerifyPath = ["menu", "popup", "menuitem", {select, {"value", "New"}}, "value"],
+                   ?assertEqual(undefined, ej:get(VerifyPath, Menu1)),
+                   % % verify that we didn't delete siblings
+                   VerifyOpen = ["menu", "popup", "menuitem", {select, {"value", "Open"}}, "onclick"],
+                   ?assertEqual([<<"OpenDoc()">>], ej:get(VerifyOpen, Menu1)),
+                   VerifyClose = ["menu", "popup", "menuitem", {select, {"value", "Close"}}, "onclick"],
                    ?assertEqual([<<"CloseDoc()">>], ej:get(VerifyClose, Menu1))
            end}
          ]
