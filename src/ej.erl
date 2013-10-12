@@ -223,8 +223,7 @@ set0([ {select, Filter = {K,_}} | Rest], P, Value, Options) when is_list(P) ->
     MakeObject = 
         case lists:keyfind(make_object, 1, Options) of
             false               -> undefined;
-            {_, MakeObject_Tmp} -> MakeObject_Tmp;
-            _                   -> undefined
+            {_, MakeObject_Tmp} -> MakeObject_Tmp
         end,
     {Existed, Res} = lists:foldl(fun(E, {WhetherFound, Acc}) ->
         case matching_element(Filter, E) of
