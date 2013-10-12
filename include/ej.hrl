@@ -37,6 +37,7 @@
 %% TODO: Tuple of arbitrary length can't be typed; consider list which
 %% can. Downside of list is confusion with strings.
 -type key_tuple()   :: tuple(). %{key_type()}.
+-type key_list()    :: list().
 
 -type ej_spec_type() :: any_of        |
                         any_type      |
