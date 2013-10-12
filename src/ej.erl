@@ -47,12 +47,40 @@
 
 %% @doc Extract a value from `Obj'
 %%
-%% `Keys' is a tuple specifying a path into the JSON structure.  Each
-%% string or binary element of `Keys' will act like a Javascript
-%% property lookup.  Elements of JSON arrays can be accessed by
-%% including an integer as an element of `Keys'.  In addition, the
-%% atoms `` 'first' '' and `` 'last' '' can be used to access the
-%% first and last elements of a list, respectively.
+%% `Keys' is a tuple or list specifying a path into the JSON
+%% structure.  Each string or binary element of `Keys' will act like a
+%% Javascript property lookup.  Elements of JSON arrays can be
+%% accessed by including an integer as an element of `Keys'.  In
+%% addition, the atoms `` 'first' '' and `` 'last' '' can be used to
+%% access the first and last elements of a list, respectively.
+%%
+%% Additionally, a subset of JSON objects in an array can be selected
+%% by matching on a key/value pair. This is best explained with an
+%% example (for compactness, the input and output is shown using JSON
+%% notation instead of EJSON).
+%%
+%% Given:
+%% ```
+%% Cakes = {[
+%%           {<<"cakes">>, [
+%%                          {[{<<"frosting">>, <<"white">>}, {<<"tastes">>, <<"good">>}]},
+%%                          {[{<<"frosting">>, <<"red">>},   {<<"tastes">>, <<"good">>}]},
+%%                          {[{<<"frosting">>, <<"blue">>},  {<<"tastes">>, <<"bad">>}]}
+%%                         ]
+%%           }
+%%          ]}.
+%% '''
+%%
+%% Then you can select the good tasting cakes like this:
+%%
+%% ```
+%% ej:get({"cakes", {select {"tastes", "good"}}}, Cakes).
+%%
+%% [
+%%  {[{<<"frosting">>, <<"white">>}, {<<"tastes">>, <<"good">>}]},
+%%  {[{<<"frosting">>, <<"red">>},   {<<"tastes">>, <<"good">>}]}
+%% ]
+%% '''
 %%
 -spec get(ej_key_path(), json_object() | json_plist()) -> json_term() | undefined.
 
@@ -166,11 +194,22 @@ set(Keys, Obj, Value) when is_list(Keys) ->
 %% @doc Set a value in `Obj' and create missing intermediate
 %%      nodes if need be.
 %%
-%% This resembles the -p option in mkdir. If the intermediate
-%% elements in the structure are missing, then they are created.
-%% This is useful when creating complex JSON structures from scratch.
+%% This resembles the behavior of `mkdir -p'. If the intermediate
+%% elements in the structure are missing, then they are created.  This
+%% is useful when creating complex EJSON structures from scratch.
 %%
 %% The arguments are the same as for `set'.
+%%
+%% Example:
+%% ```
+%% ej:set_p({"users", {select, {"name", "sebastian"}}, "location"},
+%%          {[]},
+%%          <<"Germany">>).
+%%
+%% {[{<<"users">>,
+%%    [{[{<<"location">>, <<"Germany">>},
+%%       {<<"name">>, <<"sebastian">>}]}]}]}
+%% '''
 %%
 -spec set_p(ej_key_path(), json_object(), json_term()) -> json_term().
 set_p(Keys, Obj, Value) when is_tuple(Keys) ->
@@ -220,18 +259,18 @@ set0(Key = [{select, {_,_}} | _], {struct, P}, Value, Options) ->
 set0(Key = [{select, {_,_}} | _], {P}, Value, Options) ->
     set0(Key, P, Value, [{make_object, fun make_object/1} | Options]);
 set0([ {select, Filter = {K,_}} | Rest], P, Value, Options) when is_list(P) ->
-    MakeObject = 
+    MakeObject =
         case lists:keyfind(make_object, 1, Options) of
             false               -> undefined;
             {_, MakeObject_Tmp} -> MakeObject_Tmp
         end,
     {Existed, Res} = lists:foldl(fun(E, {WhetherFound, Acc}) ->
         case matching_element(Filter, E) of
-            true -> 
+            true ->
                 ChildElems = object_list(set0(Rest, E, Value, Options)),
                 Child = MakeObject(lists:keystore(as_binary(K), 1, ChildElems, composite_key_as_binary(Filter))),
                 {true, [Child | Acc]};
-            false -> 
+            false ->
                 {WhetherFound, [E | Acc]}
         end
     end, {false, []}, P),
@@ -1130,7 +1169,7 @@ ej_test_() ->
                    %% If we request a composite path that doesn't exist,
                    %% the missing nodes should be created for us dynamically
                    %% to match the filtering criteria we are searching for.
-                   %% Furthermore, this should not affect old values already existing in the 
+                   %% Furthermore, this should not affect old values already existing in the
                    %% same structure.
                    StartData = {struct,[{<<"users">>,[
                         {struct,[{<<"rooms">>,[
@@ -1141,12 +1180,12 @@ ej_test_() ->
                               ]},{<<"id">>,<<"seb">>}]
                         }]
                    }]},
-                   ValidPath = {"users", {select, {"id", "seb"}}, 
-                                "rooms", {select, {"room_id", "livingroom"}}, 
+                   ValidPath = {"users", {select, {"id", "seb"}},
+                                "rooms", {select, {"room_id", "livingroom"}},
                                 "books", {select, {"title", "faust"}}, "rating"},
                    ?assertEqual([5], ej:get(ValidPath, StartData)),
-                   NewPath = {"users", {select, {"id", "seb"}}, 
-                              "rooms", {select, {"room_id", "bathroom"}}, 
+                   NewPath = {"users", {select, {"id", "seb"}},
+                              "rooms", {select, {"room_id", "bathroom"}},
                               "sink"},
                    NewValue = true,
                    Result = ej:set_p(NewPath, StartData, NewValue),
