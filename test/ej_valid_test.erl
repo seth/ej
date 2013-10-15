@@ -298,6 +298,35 @@ object_map_test_() ->
                    ej:valid(Spec, BadNotObject))
     ].
 
+empty_top_level_object_test_() ->
+    Spec = empty_object,
+    GoodEmpty = {[]},
+    BadNotEmpty = {[{<<"k1">>, <<"v1">>},
+                    {<<"k2">>, <<"v2">>},
+                    {<<"k3">>, <<"v3">>}
+                   ]},
+    [
+     ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
+     ?_assertEqual(#ej_invalid{type = empty_object, key = undefined,
+                               expected_type = object,
+                               found_type = object,
+                               found = BadNotEmpty},
+                   ej:valid(Spec, BadNotEmpty))
+    ].
+
+empty_top_level_array_test_() ->
+    Spec = empty_array,
+    GoodEmpty = [],
+    BadNotEmpty = [<<"a1">>, <<"a2">>, <<"a3">>],
+    [
+     ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
+     ?_assertEqual(#ej_invalid{type = empty_array, key = undefined,
+                               expected_type = array,
+                               found_type = array,
+                               found = BadNotEmpty},
+                   ej:valid(Spec, BadNotEmpty))
+    ].
+
 nested_specs_test_() ->
     Spec = {[{<<"name">>, {string_match, regex_for(name)}},
              {<<"a">>, {[
