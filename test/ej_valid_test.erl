@@ -477,6 +477,49 @@ struct_object_map_test_() ->
      ?_assertMatch(#ej_invalid{}, ej:valid(Spec, WrongArrayType))
     ].
 
+empty_top_level_struct_object_map_test_() ->
+    Spec = empty_object,
+
+    BadNotEmpty = {struct, [{<<"a">>, [<<"b">>]}]},
+    Empty = {struct, []},
+    [
+     ?_assertEqual(#ej_invalid{type=empty_object, key = undefined,
+                               expected_type = object, found_type = object,
+                               found = BadNotEmpty},
+                   ej:valid(Spec, BadNotEmpty)),
+     ?_assertEqual(ok, ej:valid(Spec, Empty))
+    ].
+
+empty_struct_object_test_() ->
+    Spec = {[{<<"object">>, empty_object}]},
+    GoodEmpty = {[{<<"object">>, {struct, []} }]},
+    BadNotEmpty = {struct, [{<<"object">>,
+                             {struct, [{<<"k1">>, <<"v1">>},
+                                       {<<"k2">>, <<"v2">>},
+                                       {<<"k3">>, <<"v3">>}
+                                      ]}}
+                           ]},
+    BadType = {struct, [{<<"object">>, <<"foo">>}]},
+
+    [
+     ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
+     ?_assertEqual(#ej_invalid{type = empty_object, key = <<"object">>,
+                               expected_type = object,
+                               found_type = object,
+                               found = {struct, [{<<"k1">>, <<"v1">>},
+                                                 {<<"k2">>, <<"v2">>},
+                                                 {<<"k3">>, <<"v3">>}
+                                                ]}
+                              },
+                   ej:valid(Spec, BadNotEmpty)),
+        ?_assertEqual(#ej_invalid{type = empty_object, key = <<"object">>,
+                                  expected_type = object,
+                                  found_type = string,
+                                  found = <<"foo">>},
+                      ej:valid(Spec, BadType))
+    ].
+
+
 basic_struct_object_test_() ->
     Spec = {[{<<"key1">>, string}]},
     Obj1 = {struct, [{<<"key1">>, <<"value1">>}]},

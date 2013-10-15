@@ -397,9 +397,15 @@ valid({object_map, _}=Spec, Obj={struct, OL}) when is_list(OL) ->
     check_value_spec(<<"no_key">>, Spec, Obj, #spec_ctx{});
 valid(empty_object, {[]}) ->
     ok;
+valid(empty_object, {struct, []}) ->
+    ok;
 valid(empty_object, Obj={OL}) when is_list(OL) ->
     #ej_invalid{type = empty_object, key = undefined,
                 expected_type = object, found_type = object,
+                found = Obj};
+valid(empty_object, Obj={struct, OL}) when is_list(OL) ->
+    #ej_invalid{type = empty_object, key = undefined,
+                expected_type = object, found_type = json_type(Obj),
                 found = Obj};
 valid(empty_array, []) ->
     ok;
@@ -616,6 +622,8 @@ check_value_spec(Key, {object_map, _ItemSpec}, Val, #spec_ctx{path = Path}) ->
                 found = Val};
 
 check_value_spec(_Key, empty_object, {[]}, #spec_ctx{}) ->
+    ok;
+check_value_spec(_Key, empty_object, {struct, []}, #spec_ctx{}) ->
     ok;
 check_value_spec(Key, empty_object, Val, #spec_ctx{path = Path}) ->
     #ej_invalid{type = empty_object, key = make_key(Key, Path),
