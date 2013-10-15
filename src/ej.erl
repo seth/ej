@@ -459,9 +459,11 @@ type_from_spec({string_match, _}) ->
     string;
 type_from_spec({array_map, _}) ->
     array;
+type_from_spec(empty_array) ->
+    array;
 type_from_spec({object_map, _}) ->
     object;
-type_from_spec({empty_object, _}) ->
+type_from_spec(empty_object) ->
     object;
 type_from_spec({fun_match, {_, Type, _}}) ->
     Type;
@@ -587,6 +589,14 @@ check_value_spec(Key, {array_map, _ItemSpec}, Val, #spec_ctx{path = Path}) ->
                 found_type = json_type(Val),
                 found = Val};
 
+check_value_spec(_Key, empty_array, [], #spec_ctx{}) ->
+    ok;
+check_value_spec(Key, empty_array, Val, #spec_ctx{path = Path}) ->
+    #ej_invalid{type = empty_array, key = make_key(Key, Path),
+                expected_type = array,
+                found_type = json_type(Val),
+                found = Val};
+
 check_value_spec(Key, OM={object_map, _}, {struct, L}, Ctx) when is_list(L) ->
     check_value_spec(Key, OM, {L}, Ctx);
 check_value_spec(Key, {object_map, {{keys, KeySpec}, {values, ValSpec}}},
@@ -601,6 +611,14 @@ check_value_spec(Key, {object_map, {{keys, KeySpec}, {values, ValSpec}}},
 check_value_spec(Key, {object_map, _ItemSpec}, Val, #spec_ctx{path = Path}) ->
     %% expected an object for object_map, found wrong type
     #ej_invalid{type = json_type, key = make_key(Key, Path),
+                expected_type = object,
+                found_type = json_type(Val),
+                found = Val};
+
+check_value_spec(_Key, empty_object, {[]}, #spec_ctx{}) ->
+    ok;
+check_value_spec(Key, empty_object, Val, #spec_ctx{path = Path}) ->
+    #ej_invalid{type = empty_object, key = make_key(Key, Path),
                 expected_type = object,
                 found_type = json_type(Val),
                 found = Val};

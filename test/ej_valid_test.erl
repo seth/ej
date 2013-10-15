@@ -312,6 +312,7 @@ empty_top_level_object_test_() ->
                                found_type = object,
                                found = BadNotEmpty},
                    ej:valid(Spec, BadNotEmpty))
+
     ].
 
 empty_top_level_array_test_() ->
@@ -326,6 +327,57 @@ empty_top_level_array_test_() ->
                                found = BadNotEmpty},
                    ej:valid(Spec, BadNotEmpty))
     ].
+
+empty_object_test_() ->
+    Spec = {[{<<"object">>, empty_object}]},
+    GoodEmpty = {[{<<"object">>, {[]} }]},
+    BadNotEmpty = {[{<<"object">>,
+              {[
+                {<<"k1">>, <<"v1">>},
+                {<<"k2">>, <<"v2">>},
+                {<<"k3">>, <<"v3">>}
+               ]}}
+            ]},
+    BadType = {[{<<"object">>, <<"foo">>}]},
+
+    [
+     ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
+     ?_assertEqual(#ej_invalid{type = empty_object, key = <<"object">>,
+                               expected_type = object,
+                               found_type = object,
+                               found = {[{<<"k1">>, <<"v1">>},
+                                         {<<"k2">>, <<"v2">>},
+                                         {<<"k3">>, <<"v3">>}
+                                        ]}
+                              },
+                   ej:valid(Spec, BadNotEmpty)),
+        ?_assertEqual(#ej_invalid{type = empty_object, key = <<"object">>,
+                                  expected_type = object,
+                                  found_type = string,
+                                  found = <<"foo">>},
+                      ej:valid(Spec, BadType))
+    ].
+
+empty_array_test_() ->
+    Spec = {[{<<"array">>, empty_array}]},
+    GoodEmpty = {[{<<"array">>, [] }]},
+    BadNotEmpty = {[{<<"array">>, [<<"a1">>, <<"a2">>, <<"a3">>]}]},
+    BadType = {[{<<"array">>, <<"foo">>}]},
+
+    [
+     ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
+     ?_assertEqual(#ej_invalid{type = empty_array, key = <<"array">>,
+                               expected_type = array,
+                               found_type = array,
+                               found = [<<"a1">>, <<"a2">>, <<"a3">>]},
+                   ej:valid(Spec, BadNotEmpty)),
+        ?_assertEqual(#ej_invalid{type = empty_array, key = <<"array">>,
+                                  expected_type = array,
+                                  found_type = string,
+                                  found = <<"foo">>},
+                      ej:valid(Spec, BadType))
+    ].
+
 
 nested_specs_test_() ->
     Spec = {[{<<"name">>, {string_match, regex_for(name)}},
