@@ -298,6 +298,87 @@ object_map_test_() ->
                    ej:valid(Spec, BadNotObject))
     ].
 
+empty_top_level_object_test_() ->
+    Spec = empty_object,
+    GoodEmpty = {[]},
+    BadNotEmpty = {[{<<"k1">>, <<"v1">>},
+                    {<<"k2">>, <<"v2">>},
+                    {<<"k3">>, <<"v3">>}
+                   ]},
+    [
+     ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
+     ?_assertEqual(#ej_invalid{type = empty_object, key = undefined,
+                               expected_type = object,
+                               found_type = object,
+                               found = BadNotEmpty},
+                   ej:valid(Spec, BadNotEmpty))
+
+    ].
+
+empty_top_level_array_test_() ->
+    Spec = empty_array,
+    GoodEmpty = [],
+    BadNotEmpty = [<<"a1">>, <<"a2">>, <<"a3">>],
+    [
+     ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
+     ?_assertEqual(#ej_invalid{type = empty_array, key = undefined,
+                               expected_type = array,
+                               found_type = array,
+                               found = BadNotEmpty},
+                   ej:valid(Spec, BadNotEmpty))
+    ].
+
+empty_object_test_() ->
+    Spec = {[{<<"object">>, empty_object}]},
+    GoodEmpty = {[{<<"object">>, {[]} }]},
+    BadNotEmpty = {[{<<"object">>,
+              {[
+                {<<"k1">>, <<"v1">>},
+                {<<"k2">>, <<"v2">>},
+                {<<"k3">>, <<"v3">>}
+               ]}}
+            ]},
+    BadType = {[{<<"object">>, <<"foo">>}]},
+
+    [
+     ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
+     ?_assertEqual(#ej_invalid{type = empty_object, key = <<"object">>,
+                               expected_type = object,
+                               found_type = object,
+                               found = {[{<<"k1">>, <<"v1">>},
+                                         {<<"k2">>, <<"v2">>},
+                                         {<<"k3">>, <<"v3">>}
+                                        ]}
+                              },
+                   ej:valid(Spec, BadNotEmpty)),
+        ?_assertEqual(#ej_invalid{type = empty_object, key = <<"object">>,
+                                  expected_type = object,
+                                  found_type = string,
+                                  found = <<"foo">>},
+                      ej:valid(Spec, BadType))
+    ].
+
+empty_array_test_() ->
+    Spec = {[{<<"array">>, empty_array}]},
+    GoodEmpty = {[{<<"array">>, [] }]},
+    BadNotEmpty = {[{<<"array">>, [<<"a1">>, <<"a2">>, <<"a3">>]}]},
+    BadType = {[{<<"array">>, <<"foo">>}]},
+
+    [
+     ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
+     ?_assertEqual(#ej_invalid{type = empty_array, key = <<"array">>,
+                               expected_type = array,
+                               found_type = array,
+                               found = [<<"a1">>, <<"a2">>, <<"a3">>]},
+                   ej:valid(Spec, BadNotEmpty)),
+        ?_assertEqual(#ej_invalid{type = empty_array, key = <<"array">>,
+                                  expected_type = array,
+                                  found_type = string,
+                                  found = <<"foo">>},
+                      ej:valid(Spec, BadType))
+    ].
+
+
 nested_specs_test_() ->
     Spec = {[{<<"name">>, {string_match, regex_for(name)}},
              {<<"a">>, {[
@@ -395,6 +476,49 @@ struct_object_map_test_() ->
      ?_assertMatch(#ej_invalid{}, ej:valid(Spec, NotArray)),
      ?_assertMatch(#ej_invalid{}, ej:valid(Spec, WrongArrayType))
     ].
+
+empty_top_level_struct_object_map_test_() ->
+    Spec = empty_object,
+
+    BadNotEmpty = {struct, [{<<"a">>, [<<"b">>]}]},
+    Empty = {struct, []},
+    [
+     ?_assertEqual(#ej_invalid{type=empty_object, key = undefined,
+                               expected_type = object, found_type = object,
+                               found = BadNotEmpty},
+                   ej:valid(Spec, BadNotEmpty)),
+     ?_assertEqual(ok, ej:valid(Spec, Empty))
+    ].
+
+empty_struct_object_test_() ->
+    Spec = {[{<<"object">>, empty_object}]},
+    GoodEmpty = {[{<<"object">>, {struct, []} }]},
+    BadNotEmpty = {struct, [{<<"object">>,
+                             {struct, [{<<"k1">>, <<"v1">>},
+                                       {<<"k2">>, <<"v2">>},
+                                       {<<"k3">>, <<"v3">>}
+                                      ]}}
+                           ]},
+    BadType = {struct, [{<<"object">>, <<"foo">>}]},
+
+    [
+     ?_assertEqual(ok, ej:valid(Spec, GoodEmpty)),
+     ?_assertEqual(#ej_invalid{type = empty_object, key = <<"object">>,
+                               expected_type = object,
+                               found_type = object,
+                               found = {struct, [{<<"k1">>, <<"v1">>},
+                                                 {<<"k2">>, <<"v2">>},
+                                                 {<<"k3">>, <<"v3">>}
+                                                ]}
+                              },
+                   ej:valid(Spec, BadNotEmpty)),
+        ?_assertEqual(#ej_invalid{type = empty_object, key = <<"object">>,
+                                  expected_type = object,
+                                  found_type = string,
+                                  found = <<"foo">>},
+                      ej:valid(Spec, BadType))
+    ].
+
 
 basic_struct_object_test_() ->
     Spec = {[{<<"key1">>, string}]},

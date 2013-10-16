@@ -55,7 +55,9 @@
                         missing       |
                         object_key    |
                         object_value  |
-                        string_match.
+                        string_match  |
+                        empty_object  |
+                        empty_array.
 
 -type ej_json_type_name() :: array    |
                              boolean  |
