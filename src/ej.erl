@@ -137,6 +137,8 @@ get_value(Key, [_H|_T]) when is_binary(Key) ->
     undefined;
 get_value(Key, []) when is_binary(Key) ->
     undefined;
+get_value(Key, null) when is_binary(Key) ->
+    undefined;
 get_value(first, [H|_T]) ->
     H;
 get_value(last, List=[_H|_T]) ->
@@ -145,7 +147,7 @@ get_value(Index, List=[_H|_T]) when is_integer(Index) ->
     lists:nth(Index, List);
 get_value({select, KeyValue}, List=[_H|_T]) when is_tuple(KeyValue) orelse KeyValue =:= all ->
     {from_select, matching_array_elements(KeyValue, List)};
-get_value(Index, Obj) ->
+get_value(Index, Obj) when is_integer(Index) ->
     erlang:error({index_for_non_list, {Index, Obj}}).
 
 as_binary(Key) when is_binary(Key) ->
@@ -830,6 +832,9 @@ ej_test_() ->
 
             ?_assertEqual(undefined,
                           ej:get({"not_present"}, {struct, []})),
+
+            ?_assertEqual(undefined,
+                          ej:get({"root", "not_present"}, {struct, [{<<"root">>, null}]})),
 
             ?_assertEqual(undefined, ej:get({[]}, Widget)),
 
