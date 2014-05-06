@@ -5,3 +5,5 @@ doc/*.css
 doc/erlang.png
 doc/edoc-info
 ebin
+.concrete/
+deps/
