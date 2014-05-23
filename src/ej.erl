@@ -373,6 +373,10 @@ delete(Keys, Obj) when is_list(Keys) ->
 -type ej_object_map() :: {object_map, {{keys, ej_json_val_spec()},
                                        {values, ej_json_val_spec()}}}.
 
+%% Validate a value against one of multiple spec's.
+-type ej_any_of() :: {any_of, {ej_json_val_spec(),
+                               ErrorMessage :: any()}}.
+
 -type ej_json_spec() :: {[ej_json_spec_rule()]} | ej_object_map().
 -type ej_json_spec_rule() :: {ej_json_key_spec(), ej_json_val_spec()}.
 -type ej_json_key_spec() :: binary() | {opt, binary()}.
@@ -382,6 +386,7 @@ delete(Keys, Obj) when is_list(Keys) ->
                             ej_fun_match()       |
                             ej_array_map()       |
                             ej_object_map()      |
+                            ej_any_of()          |
                             {[ej_json_val_spec()]}.
 
 -spec valid(Spec :: ej_json_spec(), Obj:: json_object()) -> ok | #ej_invalid{}.
