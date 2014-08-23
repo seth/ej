@@ -145,6 +145,12 @@ get_value(last, List=[_H|_T]) ->
     lists:last(List);
 get_value(Index, List=[_H|_T]) when is_integer(Index) ->
     lists:nth(Index, List);
+get_value({startswith, KeyPrefix}, List) when is_binary(KeyPrefix) ->
+    Res = lists:filter(fun({K, V}) -> matching_prefix(KeyPrefix, K) end, List),
+    case Res of
+        [] -> undefined;
+        _ -> Res
+    end;
 get_value({select, KeyValue}, List=[_H|_T]) when is_tuple(KeyValue) orelse KeyValue =:= all ->
     {from_select, matching_array_elements(KeyValue, List)};
 get_value(Index, Obj) when is_integer(Index) ->
@@ -163,6 +169,13 @@ matching_array_elements(all, List) ->
     List;
 matching_array_elements(CompKey, List) ->
     lists:filter(fun(E) -> matching_element(CompKey, E) end, List).
+
+matching_prefix(Prefix, V) ->
+    PrefixSize = byte_size(Prefix),
+    case V of
+        <<Prefix:PrefixSize/binary, _/binary>> -> true;
+        _ -> false
+    end.
 
 matching_element({K, V}, {struct, E}) ->
     Value = as_binary(V),
