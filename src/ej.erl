@@ -1047,7 +1047,7 @@ ej_test_() ->
                    ?assertEqual(4, length(List))
            end},
 
-          {"ej:set_p creates intermediate missing nodes， keys is tuple",
+          {"ej:set_p creates intermediate missing nodes, keys is tuple",
            fun() ->
                    StartData = {struct,[]},
                    EndData = {struct,[{<<"a">>,
@@ -1066,7 +1066,7 @@ ej_test_() ->
                    ?assertEqual(<<"value">>, ej:get(Path, Result2))
            end},
 
-           {"ej:set_p creates intermediate missing nodes， keys is lists",
+           {"ej:set_p creates intermediate missing nodes, keys is lists",
            fun() ->
                    StartData = {struct,[]},
                    EndData = {struct,[{<<"a">>,
