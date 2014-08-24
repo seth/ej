@@ -934,6 +934,21 @@ ej_test_() ->
                                 ej:get({"users", {select, all}, "company"}, Data))
            end},
 
+          {"ej:get startswith ",
+           fun() ->
+                Data = {[
+                    {<<"admin:1:name">>, <<"Admin1">>},
+                    {<<"admin:2:name">>, <<"Admin2">>},
+                    {<<"user:1:name">>, <<"User1">>},
+                    {<<"user:2:name">>, <<"User2">>}]},
+                ?assertEqual(undefined, ej:get({{startswith, <<"guest">>}}, Data)),
+                ?assertMatch([], ej:get({{startswith, <<"guest">>}}, Data, [])),
+                ?assertMatch([
+                    {<<"user:1:name">>, <<"User1">>},
+                    {<<"user:2:name">>, <<"User2">>}],
+                    ej:get({{startswith, <<"user">>}}, Data))
+           end},
+
           {"ej:set, replacing existing value, keys is tuple",
            fun() ->
                    Path = {"widget", "window", "name"},
