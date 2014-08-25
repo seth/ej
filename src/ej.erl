@@ -145,6 +145,12 @@ get_value(last, List=[_H|_T]) ->
     lists:last(List);
 get_value(Index, List=[_H|_T]) when is_integer(Index) ->
     lists:nth(Index, List);
+get_value({startswith, KeyPrefix}, List) when is_binary(KeyPrefix) ->
+    Res = lists:filter(fun({K, V}) -> matching_prefix(KeyPrefix, K) end, List),
+    case Res of
+        [] -> undefined;
+        _ -> Res
+    end;
 get_value({select, KeyValue}, List=[_H|_T]) when is_tuple(KeyValue) orelse KeyValue =:= all ->
     {from_select, matching_array_elements(KeyValue, List)};
 get_value(Index, Obj) when is_integer(Index) ->
@@ -163,6 +169,13 @@ matching_array_elements(all, List) ->
     List;
 matching_array_elements(CompKey, List) ->
     lists:filter(fun(E) -> matching_element(CompKey, E) end, List).
+
+matching_prefix(Prefix, V) ->
+    PrefixSize = byte_size(Prefix),
+    case V of
+        <<Prefix:PrefixSize/binary, _/binary>> -> true;
+        _ -> false
+    end.
 
 matching_element({K, V}, {struct, E}) ->
     Value = as_binary(V),
@@ -921,6 +934,21 @@ ej_test_() ->
                                 ej:get({"users", {select, all}, "company"}, Data))
            end},
 
+          {"ej:get startswith ",
+           fun() ->
+                Data = {[
+                    {<<"admin:1:name">>, <<"Admin1">>},
+                    {<<"admin:2:name">>, <<"Admin2">>},
+                    {<<"user:1:name">>, <<"User1">>},
+                    {<<"user:2:name">>, <<"User2">>}]},
+                ?assertEqual(undefined, ej:get({{startswith, <<"guest">>}}, Data)),
+                ?assertMatch([], ej:get({{startswith, <<"guest">>}}, Data, [])),
+                ?assertMatch([
+                    {<<"user:1:name">>, <<"User1">>},
+                    {<<"user:2:name">>, <<"User2">>}],
+                    ej:get({{startswith, <<"user">>}}, Data))
+           end},
+
           {"ej:set, replacing existing value, keys is tuple",
            fun() ->
                    Path = {"widget", "window", "name"},
@@ -1034,7 +1062,7 @@ ej_test_() ->
                    ?assertEqual(4, length(List))
            end},
 
-          {"ej:set_p creates intermediate missing nodes， keys is tuple",
+          {"ej:set_p creates intermediate missing nodes, keys is tuple",
            fun() ->
                    StartData = {struct,[]},
                    EndData = {struct,[{<<"a">>,
@@ -1053,7 +1081,7 @@ ej_test_() ->
                    ?assertEqual(<<"value">>, ej:get(Path, Result2))
            end},
 
-           {"ej:set_p creates intermediate missing nodes， keys is lists",
+           {"ej:set_p creates intermediate missing nodes, keys is lists",
            fun() ->
                    StartData = {struct,[]},
                    EndData = {struct,[{<<"a">>,
