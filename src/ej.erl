@@ -146,7 +146,7 @@ get_value(last, List=[_H|_T]) ->
 get_value(Index, List=[_H|_T]) when is_integer(Index) ->
     lists:nth(Index, List);
 get_value({startswith, KeyPrefix}, List) when is_binary(KeyPrefix) ->
-    Res = lists:filter(fun({K, V}) -> matching_prefix(KeyPrefix, K) end, List),
+    Res = lists:filter(fun({K, _}) -> matching_prefix(KeyPrefix, K) end, List),
     case Res of
         [] -> undefined;
         _ -> Res
