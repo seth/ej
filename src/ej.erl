@@ -689,20 +689,17 @@ check_value_spec(_Key, boolean, Val, _Ctx) when Val =:= true; Val =:= false ->
 check_value_spec(Key, boolean, Val, #spec_ctx{path = Path}) ->
     invalid_for_type(boolean, Val, Key, Path);
 
-check_value_spec(_Key, Val, Val, _Ctx) when is_binary(Val) ->
+check_value_spec(_Key, Val, Val, _Ctx) ->
     %% exact match desired
     ok;
-check_value_spec(Key, SpecVal, Val, #spec_ctx{path = Path}) when is_binary(SpecVal) ->
+check_value_spec(Key, SpecVal, Val, #spec_ctx{path = Path}) ->
     %% exact match failed
     #ej_invalid{type = exact,
                 key = make_key(Key, Path),
                 found = Val,
-                expected_type = string,
+                expected_type = json_type(SpecVal),
                 found_type = json_type(Val),
-                msg = SpecVal};
-check_value_spec(Key, SpecVal, Val, #spec_ctx{path = Path}) ->
-    %% catch all
-    error({unknown_spec, SpecVal, {key, make_key(Key, Path)}, {value, Val}, {path, Path}}).
+                msg = SpecVal}.
 
 
 invalid_for_type(ExpectType, Val, Key, Path) ->

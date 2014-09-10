@@ -550,6 +550,112 @@ deep_struct_object_test_() ->
      ?_assertMatch(#ej_invalid{}, ej:valid(Spec, ObjNotOk))
     ].
 
+literal_match_test_() ->
+    [{Message, ?_assertEqual(ok, ej:valid(Spec, Object))} ||
+         {Message, Object, Spec} <- [
+                                     {"strings can match literally",
+                                      {[{<<"foo">>, <<"bar">>},
+                                        {<<"bar">>, <<"quuz">>}]},
+                                      {[{<<"foo">>, <<"bar">>},
+                                        {<<"bar">>, string}]}
+                                      },
+                                     {"integers can match literally",
+                                      {[{<<"foo">>, 1},
+                                        {<<"bar">>, 2}]},
+                                      {[{<<"foo">>, 1},
+                                        {<<"bar">>, number}]}
+                                     },
+                                     {"floats can match literally",
+                                      {[{<<"foo">>, 3.14},
+                                        {<<"bar">>, 2.17}]},
+                                      {[{<<"foo">>, 3.14},
+                                        {<<"bar">>, number}]}
+                                     },
+                                     {"arrays can match literally",
+                                      {[{<<"foo">>, [1,2,3]},
+                                        {<<"bar">>, [4,5,6]}]},
+                                      {[{<<"foo">>, [1,2,3]},
+                                        {<<"bar">>, {array_map, number}}]}
+                                     },
+                                     {"objects can match literally",
+                                      {[
+                                        {<<"foo">>, {[{<<"bar">>, <<"baz">>}]}},
+                                        {<<"bar">>, {[{<<"blah">>, <<"blahblah">>}]}}
+                                       ]},
+                                      {[
+                                        {<<"foo">>, {[{<<"bar">>, <<"baz">>}]}},
+                                        {<<"bar">>, {object_map, {{keys, string}, {values, string}}}}
+                                       ]}
+                                     },
+                                     {"booleans can match literally",
+                                      {[{<<"foo">>, true},
+                                        {<<"bar">>, false}]},
+                                      {[{<<"foo">>, true},
+                                        {<<"bar">>, boolean}]}
+                                     }
+                                    ]
+    ].
+
+literal_match_failures_test_() ->
+    [{Message, ?_assertMatch(#ej_invalid{}, ej:valid(Spec, Object))} ||
+         {Message, Object, Spec} <- [
+                                     {"strings can fail to match literally",
+                                      {[{<<"foo">>, <<"bar">>}]},
+                                      {[{<<"foo">>, <<"barf">>}]}
+                                     },
+                                     {"integers can fail to match literally",
+                                      {[{<<"foo">>, 1}]},
+                                      {[{<<"foo">>, 100}]}
+                                     },
+                                     {"floats can fail to match literally",
+                                      {[{<<"foo">>, 3.14}]},
+                                      {[{<<"foo">>, 3.141}]}
+                                     },
+                                     {"arrays can fail match literally",
+                                      {[{<<"foo">>, [1,2,3]}]},
+                                      {[{<<"foo">>, [1,2,3,4]}]}
+                                     },
+                                     {"arrays can fail in other ways to match literally",
+                                      {[{<<"foo">>, [1,2,3]}]},
+                                      {[{<<"foo">>, [1,2]}]}
+                                     },
+                                     {"arrays can fail in so many other ways to match literally",
+                                      {[{<<"foo">>, [1,2,3]}]},
+                                      {[{<<"foo">>, [1,4,3]}]}
+                                     },
+                                     {"objects can fail to match literally",
+                                      {[
+                                        {<<"foo">>, {[{<<"bar">>, <<"baz">>}]}}
+                                       ]},
+                                      {[
+                                        {<<"foo">>, {[{<<"bar">>, <<"bazbazbaz">>}]}}
+                                       ]}
+                                     },
+                                     {"objects can fail in other ways to match literally",
+                                      {[
+                                        {<<"foo">>, {[{<<"bar">>, <<"baz">>}]}},
+                                        {<<"bar">>, 123}
+                                       ]},
+                                      {[
+                                        {<<"foo">>, {[{<<"bar">>, <<"bazbaz">>}]}}
+                                       ]}
+                                     },
+                                     {"objects can fail in other ways to match literally",
+                                      {[
+                                        {<<"foo">>, {[{<<"bar">>, <<"baz">>}]}}
+                                       ]},
+                                      {[
+                                        {<<"foo">>, {[{<<"bar">>, <<"baz">>}]}},
+                                        {<<"bar">>, 123}
+                                       ]}
+                                     },
+                                     {"booleans can fail to match literally",
+                                      {[{<<"foo">>, true}]},
+                                      {[{<<"foo">>, false}]}
+                                     }
+                                    ]
+    ].
+
 basic(Name) ->
     {[{<<"name">>, Name}]}.
 
@@ -571,4 +677,3 @@ regex_for(_) ->
     Pat = <<"^[[:alpha:]]+$">>,
     {ok, Regex} = re:compile(Pat),
     {Regex, Pat}.
-
