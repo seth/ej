@@ -390,7 +390,7 @@ delete(Keys, Obj) when is_list(Keys) ->
 -type ej_any_of() :: {any_of, {ej_json_val_spec(),
                                ErrorMessage :: any()}}.
 
--type ej_json_spec() :: {[ej_json_spec_rule()]} | ej_object_map().
+-type ej_json_spec() :: {[ej_json_spec_rule()]} | ej_object_map() | ej_array_map() | empty_object | empty_array.
 -type ej_json_spec_rule() :: {ej_json_key_spec(), ej_json_val_spec()}.
 -type ej_json_key_spec() :: binary() | {opt, binary()}.
 -type ej_json_val_spec() :: binary()             |
@@ -402,7 +402,7 @@ delete(Keys, Obj) when is_list(Keys) ->
                             ej_any_of()          |
                             {[ej_json_val_spec()]}.
 
--spec valid(Spec :: ej_json_spec(), Obj:: json_object()) -> ok | #ej_invalid{}.
+-spec valid(Spec :: ej_json_spec(), Obj:: json_object() | json_array()) -> ok | #ej_invalid{}.
 %% @doc Validate JSON terms. Validity is determined by the
 %% `ej_json_spec()` provided which has the shape of EJSON terms but
 %% with keys and values describing what is expected. `Obj' is the
@@ -427,6 +427,10 @@ valid(empty_object, Obj={struct, OL}) when is_list(OL) ->
     #ej_invalid{type = empty_object, key = undefined,
                 expected_type = object, found_type = json_type(Obj),
                 found = Obj};
+
+valid({array_map, _}=Spec, List) when is_list(List) ->
+    check_value_spec(<<"no_key">>, Spec, List, #spec_ctx{});
+
 valid(empty_array, []) ->
     ok;
 valid(empty_array, Obj) when is_list(Obj) ->

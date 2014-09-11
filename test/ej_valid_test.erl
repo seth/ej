@@ -656,6 +656,33 @@ literal_match_failures_test_() ->
                                     ]
     ].
 
+bare_array_map_test_() ->
+    [{Message, ?_assertEqual(ok,
+                             ej:valid({array_map, Spec}, List))} ||
+        {Message, List, Spec} <- [
+                                  {
+                                    "array of numbers",
+                                    [1,2,3],
+                                    number
+                                  },
+                                  {"array of strings",
+                                   [<<"foo">>, <<"bar">>, <<"baz">>],
+                                   string
+                                  },
+                                  {"array of empty objects!",
+                                   [{[]}, {[]}, {[]}],
+                                   empty_object
+                                  },
+                                  {"arrays of empty arrays",
+                                   [[], [], []],
+                                   empty_array
+                                  },
+                                  {"array of arrays of strings",
+                                   [[<<"foo">>], [<<"bar">>], [<<"baz">>]],
+                                   {array_map, string}
+                                  }
+                                 ]].
+
 basic(Name) ->
     {[{<<"name">>, Name}]}.
 
