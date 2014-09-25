@@ -227,6 +227,50 @@ fun_match_test_() ->
                   ej:valid(Spec, BadType))
     ].
 
+
+fun_match_any_type_test_() ->
+    % this fun matches binaries that start with "aa"
+    % and numbers. Everything else is a failure.
+    MyFun = fun(<<"aa", _V/binary>>) ->
+                    ok;
+               (S) when is_number(S) ->
+                    ok;
+               (_) ->
+                    error
+            end,
+    Spec = {[
+             {<<"akey">>, {fun_match, {MyFun, any_type, <<"abc">>}}}
+            ]},
+
+    Good = {[{<<"akey">>, <<"aabcdef">>}]},
+    Bad = {[{<<"akey">>, <<"abcdef">>}]},
+    Missing = {[]},
+    AnotherType = {[{<<"akey">>, 123}]},
+    BadType = {[{<<"akey">>, {[{"foo", bar}]}}]},
+    [
+     ?_assertEqual(ok, ej:valid(Spec, Good)),
+
+     ?_assertEqual(#ej_invalid{type = fun_match, key = <<"akey">>,
+                               expected_type = any_value,
+                               found_type = string,
+                               found = <<"abcdef">>,
+                               msg = <<"abc">>},
+                   ej:valid(Spec, Bad)),
+
+     ?_assertEqual(#ej_invalid{type = missing, key = <<"akey">>,
+                               expected_type = any_type},
+                   ej:valid(Spec, Missing)),
+
+     ?_assertEqual(ok, ej:valid(Spec, AnotherType)),
+
+     ?_assertEqual(#ej_invalid{type = fun_match, key = <<"akey">>,
+                              expected_type = any_value,
+                              found_type = object,
+                              found ={[{"foo",bar}]},
+                              msg = <<"abc">>},
+                  ej:valid(Spec, BadType))
+    ].
+
 object_map_test_() ->
     Spec = {[
              {<<"object">>,

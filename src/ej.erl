@@ -376,7 +376,7 @@ delete(Keys, Obj) when is_list(Keys) ->
 %% matching. The advantage for now is that we can auto-generate a
 %% better missing message.
 -type ej_fun_match() :: {fun_match, {fun((json_term()) -> ok | error),
-                                        ej_json_type_name(), _}}.
+                                        any_type | ej_json_type_name(), _}}.
 
 %% Map a value spec over each element of an array value.
 -type ej_array_map() :: {array_map, ej_json_val_spec()}.
@@ -582,6 +582,17 @@ check_value_spec(Key, {string_match, _}, Val, #spec_ctx{path = Path}) ->
                 found_type = json_type(Val),
                 found = Val};
 
+check_value_spec(Key, {fun_match, {Fun, any_type, Msg}}, Val, #spec_ctx{path = Path}) ->
+    case Fun(Val) of
+        ok ->
+            ok;
+        _ ->
+            #ej_invalid{type = fun_match, key = make_key(Key, Path),
+                        expected_type = any_value,
+                        found = Val,
+                        found_type = json_type(Val),
+                        msg = Msg}
+    end;
 check_value_spec(Key, {fun_match, {Fun, Type, Msg}}, Val, #spec_ctx{path = Path}) ->
     %% user supplied fun
     FoundType = json_type(Val),
