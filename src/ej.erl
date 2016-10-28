@@ -400,7 +400,7 @@ delete(Keys, Obj) when is_list(Keys) ->
                             ej_array_map()       |
                             ej_object_map()      |
                             ej_any_of()          |
-                            {[ej_json_val_spec()]}.
+                            {[ej_json_spec_rule()]}.
 
 -spec valid(Spec :: ej_json_spec(), Obj:: json_object() | json_array()) -> ok | #ej_invalid{}.
 %% @doc Validate JSON terms. Validity is determined by the
