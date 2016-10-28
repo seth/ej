@@ -24,6 +24,9 @@ ej_alt_test_() ->
             ?_assertEqual(4, ej:get({"widget", "values", 4}, Widget)),
             ?_assertEqual(1, ej:get({"widget", "values", first}, Widget)),
             ?_assertEqual(5, ej:get({"widget", "values", last}, Widget)),
+            ?_assertEqual(undefined, ej:get({"widget", "keys", first}, Widget)),
+            ?_assertEqual(undefined, ej:get({"widget", "keys", last}, Widget)),
+            ?_assertEqual(undefined, ej:get({"widget", "keys", 2}, Widget)),
             ?_assertEqual({[{<<"id">>, 5}]},
                           ej:get({<<"objects">>, last}, ObjList)),
             ?_assertEqual({[{<<"id">>, 1}]},
@@ -65,7 +68,9 @@ ej_alt_test_() ->
               ComplexBeginning = {{select, {"match", "me"}}},
               ?assertMatch([{_}, {_}], ej:get(ComplexBeginning, Data)),
               ComplexBeginningDeeper = {{select, {"match", "me"}}, "match"},
-              ?assertMatch([<<"me">>, <<"me">>], ej:get(ComplexBeginningDeeper, Data))
+              ?assertMatch([<<"me">>, <<"me">>], ej:get(ComplexBeginningDeeper, Data)),
+              PathAgainstEmptyList = {"menu", "popup", "titleitem", {select, {"value", "Title"}}},
+              ?assertMatch([], ej:get(PathAgainstEmptyList, Menu))
             end},
           {"ej:get with multi-level array matching",
            fun() ->

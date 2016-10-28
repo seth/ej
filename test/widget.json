@@ -1,6 +1,7 @@
 {"widget": {
   "version": "1",
   "values": [1,2,3,4,5],
+  "keys": [],
   "debug": "on",
   "window": {
     "title": "Sample Konfabulator Widget",

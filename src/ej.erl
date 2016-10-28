@@ -139,6 +139,14 @@ get_value(Key, []) when is_binary(Key) ->
     undefined;
 get_value(Key, null) when is_binary(Key) ->
     undefined;
+get_value(first, []) ->
+    undefined;
+get_value(last, []) ->
+    undefined;
+get_value(Index, []) when is_integer(Index) ->
+    undefined;
+get_value({select, _KeyValue}, []) ->
+    {from_select, []};
 get_value(first, [H|_T]) ->
     H;
 get_value(last, List=[_H|_T]) ->
